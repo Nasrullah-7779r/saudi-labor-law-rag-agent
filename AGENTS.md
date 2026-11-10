@@ -96,4 +96,4 @@ The main agent does implementation and architecture, then hands verification to 
 
 Verify locally with targeted tests only: test files covering the changed modules (grep `backend/tests/` for the module/class names) plus new or updated tests. Don't run the full suite unless asked; CI covers it. If a targeted test fails, re-run it on the unmodified base and report pre-existing failures separately.
 
-Backend: `cd backend && uv run pytest <paths>`, `uv run ruff check .`, `uv run mypy src`.
+Backend (from `backend/`, targeted to changed files): `uv run pytest <test files>`, `uv run ruff check <files>`, `uv run mypy <src files>`. Repo-wide `ruff check .` / `mypy src` only when asked; CI runs them.

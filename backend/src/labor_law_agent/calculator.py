@@ -12,6 +12,10 @@ Rules encoded (TO VERIFY against the current BOE Arabic consolidation before rel
   article lists (force majeure, a female worker within the set period after marriage or
   childbirth, or leaving under Art. 81).
 - Art. 80: no award when the employer terminates under Article 80.
+
+Service length is measured in calendar years: whole years count anniversaries of the
+start date (a 29 Feb start rolls to 28 Feb in non-leap years); the remaining days are a
+fraction of the service year they fall in.
 """
 
 from __future__ import annotations
@@ -22,9 +26,18 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, model_validator
 
-DAYS_PER_YEAR = Decimal(365)
-FIRST_BAND_YEARS = Decimal(5)
+ARTICLE_DISMISSAL_WITHOUT_AWARD = 80
+ARTICLE_AWARD = 84
+ARTICLE_RESIGNATION = 85
+ARTICLE_FULL_AWARD_EXCEPTIONS = 87
+
+HALF_RATE_BAND_YEARS = 5
+RESIGNATION_MIN_YEARS = 2
+RESIGNATION_TWO_THIRDS_YEARS = 5
+RESIGNATION_FULL_YEARS = 10
+
 CENTS = Decimal("0.01")
+FRACTION_PRECISION = Decimal("0.0001")
 
 
 class TerminationReason(StrEnum):
@@ -64,65 +77,83 @@ class EndOfServiceResult(BaseModel):
     applied_articles: list[int]
 
 
-def _q(value: Decimal) -> Decimal:
+def _to_cents(value: Decimal) -> Decimal:
     return value.quantize(CENTS, rounding=ROUND_HALF_UP)
 
 
+def _anniversary(start: date, years: int) -> date:
+    try:
+        return start.replace(year=start.year + years)
+    except ValueError:  # 29 Feb start, non-leap target year
+        return date(start.year + years, 2, 28)
+
+
+def service_years(start: date, end: date) -> Decimal:
+    """Calendar service length: whole anniversaries plus a pro-rata partial year."""
+    whole = end.year - start.year
+    if _anniversary(start, whole) > end:
+        whole -= 1
+    last = _anniversary(start, whole)
+    next_ = _anniversary(start, whole + 1)
+    partial = Decimal((end - last).days) / Decimal((next_ - last).days)
+    return Decimal(whole) + partial
+
+
 def _resignation_fraction(years: Decimal) -> Decimal:
-    if years < 2:
+    if years < RESIGNATION_MIN_YEARS:
         return Decimal(0)
-    if years < 5:
+    if years < RESIGNATION_TWO_THIRDS_YEARS:
         return Decimal(1) / Decimal(3)
-    if years < 10:
+    if years < RESIGNATION_FULL_YEARS:
         return Decimal(2) / Decimal(3)
     return Decimal(1)
 
 
 def calculate_end_of_service(req: EndOfServiceRequest) -> EndOfServiceResult:
-    days = Decimal((req.end_date - req.start_date).days)
-    years = days / DAYS_PER_YEAR
+    years = service_years(req.start_date, req.end_date)
     wage = req.last_monthly_wage
 
-    first = min(years, FIRST_BAND_YEARS)
-    rest = max(years - FIRST_BAND_YEARS, Decimal(0))
+    half_rate_years = min(years, Decimal(HALF_RATE_BAND_YEARS))
+    full_rate_years = max(years - HALF_RATE_BAND_YEARS, Decimal(0))
     breakdown = [
         BreakdownLine(
             description="First five years: half a month's wage per year (Art. 84)",
-            years=_q(first),
+            years=_to_cents(half_rate_years),
             months_of_wage_per_year=Decimal("0.5"),
-            amount=_q(first * wage / 2),
+            amount=_to_cents(half_rate_years * wage / 2),
         )
     ]
-    if rest > 0:
+    if full_rate_years > 0:
         breakdown.append(
             BreakdownLine(
                 description="Years after the fifth: one month's wage per year (Art. 84)",
-                years=_q(rest),
+                years=_to_cents(full_rate_years),
                 months_of_wage_per_year=Decimal(1),
-                amount=_q(rest * wage),
+                amount=_to_cents(full_rate_years * wage),
             )
         )
-    full_award = first * wage / 2 + rest * wage
+    # Sum the rounded lines so the breakdown always adds up to the award shown.
+    full_award = sum((line.amount for line in breakdown), Decimal(0))
 
-    articles = [84]
+    articles = [ARTICLE_AWARD]
     match req.reason:
         case TerminationReason.RESIGNATION:
             fraction = _resignation_fraction(years)
-            articles.append(85)
+            articles.append(ARTICLE_RESIGNATION)
         case TerminationReason.ARTICLE_87_EXCEPTION:
             fraction = Decimal(1)
-            articles.append(87)
+            articles.append(ARTICLE_FULL_AWARD_EXCEPTIONS)
         case TerminationReason.ARTICLE_80_DISMISSAL:
             fraction = Decimal(0)
-            articles.append(80)
+            articles.append(ARTICLE_DISMISSAL_WITHOUT_AWARD)
         case _:
             fraction = Decimal(1)
 
     return EndOfServiceResult(
-        service_years=_q(years),
-        full_award=_q(full_award),
-        entitlement_fraction=fraction.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),
-        amount=_q(full_award * fraction),
+        service_years=_to_cents(years),
+        full_award=full_award,
+        entitlement_fraction=fraction.quantize(FRACTION_PRECISION, rounding=ROUND_HALF_UP),
+        amount=_to_cents(full_award * fraction),
         breakdown=breakdown,
         applied_articles=sorted(articles),
     )

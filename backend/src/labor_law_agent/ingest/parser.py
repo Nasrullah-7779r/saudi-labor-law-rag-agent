@@ -3,7 +3,8 @@
 Assumptions about the page (re-check against a saved real BOE page):
 - each article starts at a heading whose text is ``المادة <number>`` (Arabic-Indic or
   Western digits); text up to the next heading belongs to that article;
-- chapter/part headings start with ``الفصل`` or ``الباب``;
+- part headings start with ``الباب`` and chapter headings with ``الفصل``; a new part
+  resets the current chapter;
 - amending-decree notes are paragraphs starting with ``عدلت``/``عُدلت``/``أضيفت`` or
   carrying the ``amendment`` CSS class, and are dropped;
 - anything before the first article (the issuing decree preamble) is dropped.
@@ -12,6 +13,7 @@ Assumptions about the page (re-check against a saved real BOE page):
 from __future__ import annotations
 
 import re
+from collections import Counter
 from datetime import date
 
 from bs4 import BeautifulSoup
@@ -19,7 +21,8 @@ from pydantic import BaseModel
 
 _DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
 _ARTICLE_RE = re.compile(r"^\s*المادة\s+([0-9٠-٩۰-۹]+)\s*[:：]?\s*$")
-_CHAPTER_RE = re.compile(r"^\s*(الفصل|الباب)\b")
+_PART_RE = re.compile(r"^\s*الباب\b")
+_CHAPTER_RE = re.compile(r"^\s*الفصل\b")
 _AMEND_RE = re.compile(r"^\s*(عدلت|عُدلت|عُدِّلت|أضيفت|ألغيت)")
 
 
@@ -29,6 +32,7 @@ class ArticleParseError(ValueError):
 
 class Article(BaseModel):
     article_no: int
+    part: str | None
     chapter: str | None
     text_ar: str
     source_url: str
@@ -45,8 +49,10 @@ def parse_articles(html: str, *, source_url: str, version: date) -> list[Article
         node.decompose()
 
     articles: list[Article] = []
+    part: str | None = None
     chapter: str | None = None
     current_no: int | None = None
+    current_part: str | None = None
     current_chapter: str | None = None
     lines: list[str] = []
 
@@ -55,6 +61,7 @@ def parse_articles(html: str, *, source_url: str, version: date) -> list[Article
             articles.append(
                 Article(
                     article_no=current_no,
+                    part=current_part,
                     chapter=current_chapter,
                     text_ar="\n".join(lines).strip(),
                     source_url=source_url,
@@ -69,8 +76,12 @@ def parse_articles(html: str, *, source_url: str, version: date) -> list[Article
         if m := _ARTICLE_RE.match(text):
             flush()
             current_no = int(to_western_digits(m.group(1)))
+            current_part = part
             current_chapter = chapter
             lines = []
+        elif _PART_RE.match(text):
+            part = text
+            chapter = None
         elif _CHAPTER_RE.match(text):
             chapter = text
         elif current_no is not None and not _AMEND_RE.match(text):
@@ -85,8 +96,9 @@ def _validate(articles: list[Article]) -> None:
     if not articles:
         raise ArticleParseError("no articles found")
     numbers = [a.article_no for a in articles]
-    seen = set(numbers)
-    dupes = sorted({n for n in numbers if numbers.count(n) > 1})
+    counts = Counter(numbers)
+    seen = set(counts)
+    dupes = sorted(n for n, c in counts.items() if c > 1)
     if dupes:
         raise ArticleParseError(f"duplicate article numbers: {dupes}")
     expected = set(range(1, max(numbers) + 1))

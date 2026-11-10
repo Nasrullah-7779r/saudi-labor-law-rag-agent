@@ -8,7 +8,6 @@ from labor_law_agent.ingest.parser import (
     parse_articles,
     to_western_digits,
 )
-from labor_law_agent.retrieval import InMemoryLawRetriever
 
 FIXTURE = (Path(__file__).parent / "fixtures" / "boe_sample.html").read_text(encoding="utf-8")
 KW = {"source_url": "https://laws.boe.gov.sa/", "version": date(2025, 2, 19)}
@@ -39,12 +38,6 @@ def test_excludes_preamble_and_amendment_notes() -> None:
 def test_fails_on_gap_or_duplicate(old: str, new: str, msg: str) -> None:
     with pytest.raises(ArticleParseError, match=msg):
         parse_articles(FIXTURE.replace(old, new), **KW)
-
-
-def test_in_memory_retriever_ranks_matching_article_first() -> None:
-    retriever = InMemoryLawRetriever(parse_articles(FIXTURE, **KW))
-    hits = retriever.search("الأجر الشهري", k=2)
-    assert hits[0].article_no == 4
 
 
 def _page(*body: str) -> str:
@@ -144,17 +137,40 @@ def test_amendment_paragraph_prefixes_excluded(amend: str) -> None:
     assert art.text_ar == "نص."
 
 
-def test_in_memory_retriever_no_match_returns_empty() -> None:
-    retriever = InMemoryLawRetriever(parse_articles(FIXTURE, **KW))
-    assert retriever.search("zzzz غيرموجود") == []
-    assert retriever.search("") == []
+def test_article_gets_part_and_chapter() -> None:
+    html = _page(
+        "<h2>الباب الأول: أحكام عامة</h2>",
+        "<h2>الفصل الأول: التعريفات</h2>",
+        "<h3>المادة ١</h3><p>نص.</p>",
+    )
+    (art,) = parse_articles(html, **KW)
+    assert art.part == "الباب الأول: أحكام عامة"
+    assert art.chapter == "الفصل الأول: التعريفات"
 
 
-def test_in_memory_retriever_k_limits_results() -> None:
-    html = _page(*[f"<h3>المادة {n}</h3><p>العامل والأجر {n}.</p>" for n in (1, 2, 3)])
-    retriever = InMemoryLawRetriever(parse_articles(html, **KW))
-    assert len(retriever.search("العامل", k=2)) == 2
-    assert len(retriever.search("العامل", k=1)) == 1
-    assert len(retriever.search("العامل", k=10)) == 3
-    assert retriever.search("العامل", k=0) == []
-    assert retriever.search("العامل", k=2)[0].article_no == 1  # ties broken by article_no
+def test_new_part_resets_chapter() -> None:
+    html = _page(
+        "<h2>الباب الأول: أحكام عامة</h2>",
+        "<h2>الفصل الأول: التعريفات</h2>",
+        "<h3>المادة ١</h3><p>نص.</p>",
+        "<h2>الباب الثاني: عقد العمل</h2>",
+        "<h3>المادة ٢</h3><p>نص.</p>",
+        "<h2>الفصل الأول: إبرام العقد</h2>",
+        "<h3>المادة ٣</h3><p>نص.</p>",
+    )
+    first, second, third = parse_articles(html, **KW)
+    assert (first.part, first.chapter) == ("الباب الأول: أحكام عامة", "الفصل الأول: التعريفات")
+    assert (second.part, second.chapter) == ("الباب الثاني: عقد العمل", None)
+    assert (third.part, third.chapter) == ("الباب الثاني: عقد العمل", "الفصل الأول: إبرام العقد")
+
+
+def test_article_before_any_heading_has_no_part_or_chapter() -> None:
+    (art,) = parse_articles(_page("<h3>المادة ١</h3><p>نص.</p>"), **KW)
+    assert art.part is None
+    assert art.chapter is None
+
+
+def test_fixture_articles_carry_part() -> None:
+    articles = parse_articles(FIXTURE, **KW)
+    assert {a.part for a in articles} == {"الباب الأول: أحكام عامة"}
+
