@@ -5,8 +5,8 @@ Bilingual (AR/EN) serverless RAG agent over the Saudi Labor Law, with article ci
 ## Infrastructure
 
 ```
-PR ──► CI: backend (ruff, mypy, pytest) + terraform plan ──OIDC──► labor-law-agent-github-plan (read-only)
-main ──► Deploy: terraform apply ─────────────────────────OIDC──► labor-law-agent-github-deploy
+PR ──► CI: backend (ruff, mypy, pytest) + terraform plan ──OIDC──► saudi-labor-law-rag-agent-github-plan (read-only)
+main ──► Deploy: terraform apply ─────────────────────────OIDC──► saudi-labor-law-rag-agent-github-deploy
                                     state: s3://<bucket>/live/terraform.tfstate (+ .tflock, native S3 locking)
 ```
 
@@ -22,7 +22,7 @@ Requires Terraform >= 1.11 (native S3 locking) and admin AWS credentials on your
 ```bash
 cd infra/bootstrap
 terraform init
-terraform apply -var="state_bucket_name=<globally-unique-name>"
+terraform apply -var="state_bucket_name=<globally-unique-name>" -var="aws_region=<region>"
 terraform output
 ```
 
@@ -30,7 +30,7 @@ Keep the resulting `terraform.tfstate` safe (it is git-ignored). Then set these 
 
 | Variable | Value |
 | --- | --- |
-| `AWS_REGION` | e.g. `us-east-1` |
+| `AWS_REGION` | same `aws_region` used at bootstrap (bucket region) |
 | `TF_STATE_BUCKET` | `state_bucket_name` output |
 | `AWS_PLAN_ROLE_ARN` | `github_plan_role_arn` output |
 | `AWS_DEPLOY_ROLE_ARN` | `github_deploy_role_arn` output |
@@ -43,4 +43,7 @@ terraform init -backend-config="bucket=<bucket>" -backend-config="region=<region
 terraform plan
 ```
 
-The deploy role has `AdministratorAccess` as a bootstrap shortcut; scope it down once the live stack's resources are known.
+Known trade-offs (revisit once the live stack has real resources):
+- The deploy role has `AdministratorAccess`; scope it down. Protect `main` (required reviews + required `CI` checks), since any workflow on `main` can assume it.
+- Any same-repo PR can assume the read-only plan role. Fork PRs get no OIDC token, so their plan job fails.
+- Bootstrap fails with `EntityAlreadyExists` if the account already has a GitHub OIDC provider; import it first.

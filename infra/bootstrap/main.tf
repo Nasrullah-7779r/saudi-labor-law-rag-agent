@@ -1,5 +1,3 @@
-data "aws_caller_identity" "current" {}
-
 # ---------------------------------------------------------------------------
 # Remote state bucket (native S3 locking via <key>.tflock, no DynamoDB)
 # ---------------------------------------------------------------------------
@@ -52,31 +50,20 @@ locals {
   main_branch_sub  = "repo:${var.github_repository}:ref:refs/heads/main"
   pull_request_sub = "repo:${var.github_repository}:pull_request"
 
-  state_object_arn = "${aws_s3_bucket.terraform_state.arn}/${var.state_key}"
-  state_lock_arn   = "${aws_s3_bucket.terraform_state.arn}/${var.state_key}.tflock"
+  state_lock_arn = "${aws_s3_bucket.terraform_state.arn}/${var.state_key}.tflock"
 }
 
-data "aws_iam_policy_document" "github_deploy_trust" {
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    principals {
-      type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "${local.oidc_host}:aud"
-      values   = ["sts.amazonaws.com"]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "${local.oidc_host}:sub"
-      values   = [local.main_branch_sub]
-    }
+# One trust policy per CI role; each accepts a single exact GitHub `sub`.
+locals {
+  github_role_subs = {
+    deploy = local.main_branch_sub
+    plan   = local.pull_request_sub
   }
 }
 
-data "aws_iam_policy_document" "github_plan_trust" {
+data "aws_iam_policy_document" "github_trust" {
+  for_each = local.github_role_subs
+
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
@@ -91,7 +78,7 @@ data "aws_iam_policy_document" "github_plan_trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = [local.pull_request_sub]
+      values   = [each.value]
     }
   }
 }
@@ -100,8 +87,8 @@ data "aws_iam_policy_document" "github_plan_trust" {
 # AdministratorAccess is a deliberate bootstrap shortcut; scope it down once
 # the live stack's resource set is known.
 resource "aws_iam_role" "github_deploy" {
-  name               = "labor-law-agent-github-deploy"
-  assume_role_policy = data.aws_iam_policy_document.github_deploy_trust.json
+  name               = "saudi-labor-law-rag-agent-github-deploy"
+  assume_role_policy = data.aws_iam_policy_document.github_trust["deploy"].json
 }
 
 resource "aws_iam_role_policy_attachment" "github_deploy_admin" {
@@ -111,8 +98,8 @@ resource "aws_iam_role_policy_attachment" "github_deploy_admin" {
 
 # Plan role: pull requests, read-only plus state read and lock file write.
 resource "aws_iam_role" "github_plan" {
-  name               = "labor-law-agent-github-plan"
-  assume_role_policy = data.aws_iam_policy_document.github_plan_trust.json
+  name               = "saudi-labor-law-rag-agent-github-plan"
+  assume_role_policy = data.aws_iam_policy_document.github_trust["plan"].json
 }
 
 resource "aws_iam_role_policy_attachment" "github_plan_readonly" {
@@ -120,22 +107,14 @@ resource "aws_iam_role_policy_attachment" "github_plan_readonly" {
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
-# Permissions per Terraform S3 backend docs (use_lockfile section).
+# ReadOnlyAccess already covers reading the bucket and state object; plan only
+# additionally needs to write/delete the native lock file (Terraform S3
+# backend docs, use_lockfile section).
 data "aws_iam_policy_document" "github_plan_state" {
   statement {
-    actions   = ["s3:ListBucket"]
-    resources = [aws_s3_bucket.terraform_state.arn]
-  }
-  statement {
-    actions = ["s3:GetObject"]
+    actions = ["s3:PutObject", "s3:DeleteObject"]
     resources = [
-      local.state_object_arn, # state file
-    ]
-  }
-  statement {
-    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-    resources = [
-      local.state_lock_arn, # native lock file
+      local.state_lock_arn, # native lock file for infra/live state
     ]
   }
 }
