@@ -4,10 +4,16 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
-variable "github_repository" {
-  description = "GitHub repo (owner/name) allowed to assume the CI roles."
+variable "github_oidc_sub_prefix" {
+  description = <<-EOT
+    Prefix of the GitHub OIDC `sub` claim for this repo, without the trailing
+    context. Repos created after 2026-07-15 use the immutable form
+    repo:OWNER@OWNER-ID/REPO@REPO-ID (docs.github.com, OIDC reference).
+    Read the actual value with:
+      gh api repos/OWNER/REPO/actions/oidc/customization/sub --jq .sub_claim_prefix
+  EOT
   type        = string
-  default     = "Nasrullah-7779r/saudi-labor-law-rag-agent"
+  default     = "repo:Nasrullah-7779r@134123519/saudi-labor-law-rag-agent@1452239139"
 }
 
 variable "state_bucket_name" {

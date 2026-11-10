@@ -12,8 +12,8 @@ locals {
   oidc_host = "token.actions.githubusercontent.com"
 
   # Sub claim formats: docs.github.com "Configuring OpenID Connect in AWS".
-  main_branch_sub  = "repo:${var.github_repository}:ref:refs/heads/main"
-  pull_request_sub = "repo:${var.github_repository}:pull_request"
+  main_branch_sub  = "${var.github_oidc_sub_prefix}:ref:refs/heads/main"
+  pull_request_sub = "${var.github_oidc_sub_prefix}:pull_request"
 }
 
 # One trust policy per CI role; each accepts a single exact GitHub `sub`.

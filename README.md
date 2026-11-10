@@ -32,7 +32,9 @@ If the account already has a GitHub OIDC provider (AWS allows one per URL), impo
 terraform import -var="state_bucket_name=<name>" aws_iam_openid_connect_provider.github_actions arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com
 ```
 
-Keep the resulting `terraform.tfstate` safe (it is git-ignored). Region is fixed to `us-east-1` in code (`variables.tf`, live backend block, workflow `env`). Then set these GitHub **repository variables** (Settings → Secrets and variables → Actions → Variables — not secrets, none are credentials):
+Keep the resulting `terraform.tfstate` safe (it is git-ignored). The trust policies match GitHub's OIDC `sub` exactly. This repo uses the immutable format (`repo:OWNER@ID/REPO@ID:...`); if `AssumeRoleWithWebIdentity` is denied, compare `github_oidc_sub_prefix` with `gh api repos/<owner>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix`.
+
+Region is fixed to `us-east-1` in code (`variables.tf`, live backend block, workflow `env`). Then set these GitHub **repository variables** (Settings → Secrets and variables → Actions → Variables — not secrets, none are credentials):
 
 | Variable | Value |
 | --- | --- |
