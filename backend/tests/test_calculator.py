@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from labor_law_agent.calculator import (
     EndOfServiceRequest,
+    ServiceCalendar,
     calculate_end_of_service,
     service_years,
 )
@@ -24,7 +25,13 @@ def _on(years: int, days: int = 0) -> date:
 
 def _calc(end: date, reason: R, wage: Decimal = WAGE):
     return calculate_end_of_service(
-        EndOfServiceRequest(last_monthly_wage=wage, start_date=START, end_date=end, reason=reason)
+        EndOfServiceRequest(
+            last_monthly_wage=wage,
+            start_date=START,
+            end_date=end,
+            reason=reason,
+            calendar=ServiceCalendar.GREGORIAN,
+        )
     )
 
 
@@ -95,7 +102,11 @@ def test_breakdown_sums_to_full_award() -> None:
 def test_invalid_inputs(wage: Decimal, start: date, end: date) -> None:
     with pytest.raises(ValidationError):
         EndOfServiceRequest(
-            last_monthly_wage=wage, start_date=start, end_date=end, reason=R.RESIGNATION
+            last_monthly_wage=wage,
+            start_date=start,
+            end_date=end,
+            reason=R.RESIGNATION,
+            calendar=ServiceCalendar.GREGORIAN,
         )
 
 
@@ -166,14 +177,24 @@ def test_amounts_round_half_up_not_bankers() -> None:
 
 def test_end_date_equal_to_start_date_is_valid() -> None:
     req = EndOfServiceRequest(
-        last_monthly_wage=WAGE, start_date=START, end_date=START, reason=R.RESIGNATION
+        last_monthly_wage=WAGE,
+        start_date=START,
+        end_date=START,
+        reason=R.RESIGNATION,
+        calendar=ServiceCalendar.GREGORIAN,
     )
     assert calculate_end_of_service(req).amount == Decimal("0.00")
 
 
 def _calc_between(start: date, end: date, reason: R, wage: Decimal = WAGE):
     return calculate_end_of_service(
-        EndOfServiceRequest(last_monthly_wage=wage, start_date=start, end_date=end, reason=reason)
+        EndOfServiceRequest(
+            last_monthly_wage=wage,
+            start_date=start,
+            end_date=end,
+            reason=reason,
+            calendar=ServiceCalendar.GREGORIAN,
+        )
     )
 
 
@@ -212,27 +233,27 @@ def test_resignation_band_uses_calendar_years_across_leap_days(
     ],
 )
 def test_service_years_exact_on_anniversary(start: date, end: date, years: int) -> None:
-    assert service_years(start, end) == Decimal(years)
+    assert service_years(start, end, ServiceCalendar.GREGORIAN) == Decimal(years)
 
 
 def test_service_years_one_day_before_anniversary_is_below_whole_year() -> None:
-    assert service_years(date(2012, 2, 29), date(2013, 2, 27)) < 1
-    assert service_years(date(2012, 1, 1), date(2016, 12, 31)) < 5
+    assert service_years(date(2012, 2, 29), date(2013, 2, 27), ServiceCalendar.GREGORIAN) < 1
+    assert service_years(date(2012, 1, 1), date(2016, 12, 31), ServiceCalendar.GREGORIAN) < 5
 
 
 def test_partial_year_uses_length_of_its_own_service_year() -> None:
     # service year 2011-03-01..2012-03-01 has 366 days (contains 29 Feb 2012)
-    assert service_years(date(2011, 3, 1), date(2011, 3, 1) + timedelta(days=183)) == Decimal(
-        183
-    ) / Decimal(366)
+    assert service_years(
+        date(2011, 3, 1), date(2011, 3, 1) + timedelta(days=183), ServiceCalendar.GREGORIAN
+    ) == Decimal(183) / Decimal(366)
     # service year 2012-03-01..2013-03-01 has 365 days
-    assert service_years(date(2012, 3, 1), date(2012, 3, 1) + timedelta(days=183)) == Decimal(
-        183
-    ) / Decimal(365)
+    assert service_years(
+        date(2012, 3, 1), date(2012, 3, 1) + timedelta(days=183), ServiceCalendar.GREGORIAN
+    ) == Decimal(183) / Decimal(365)
     # whole years plus a partial in a 366-day service year
-    assert service_years(date(2011, 3, 1), date(2012, 3, 1) + timedelta(days=61)) == 1 + Decimal(
-        61
-    ) / Decimal(365)
+    assert service_years(
+        date(2011, 3, 1), date(2012, 3, 1) + timedelta(days=61), ServiceCalendar.GREGORIAN
+    ) == 1 + Decimal(61) / Decimal(365)
 
 
 @pytest.mark.parametrize(

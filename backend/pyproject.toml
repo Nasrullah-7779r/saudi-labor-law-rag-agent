@@ -5,6 +5,7 @@ description = "Bilingual Saudi Labor Law RAG agent (backend)"
 requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.12",
+    "hijridate>=2.6,<3",
     "pydantic>=2.7",
 ]
 

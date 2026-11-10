@@ -18,9 +18,17 @@ amendment, Art. 80 is amended and was read in its current wording):
 - Art. 81: a worker who leaves in the cases it lists keeps all statutory rights (full award).
 - Art. 80: no award when the employer terminates under Article 80.
 
-Service length is measured in calendar years: whole years count anniversaries of the
-start date (a 29 Feb start rolls to 28 Feb in non-leap years); the remaining days are a
-fraction of the service year they fall in.
+Art. 10: all periods in the law are counted in the Hijri calendar unless the employment
+contract or work regulations say otherwise, so ``ServiceCalendar.HIJRI`` is the default and
+``GREGORIAN`` is for contracts that specify it. Dates are given as Gregorian dates either
+way. Service length counts whole anniversaries of the start date in the chosen calendar
+(a day that doesn't exist in the anniversary month, e.g. 29 Feb or Hijri day 30, rolls back
+to the month's last day); the remaining days are a fraction of the service year they fall in.
+
+Hijri conversion uses the Umm al-Qura calendar via ``hijridate`` 2.6
+(https://pypi.org/project/hijridate/2.6.0/: ``Gregorian.fromdate(d).to_hijri()``,
+``Hijri.month_length()``, ``Hijri.to_gregorian()``; supported range 1343-1500 AH,
+1924-08-01 to 2077-11-16 CE).
 """
 
 from __future__ import annotations
@@ -29,6 +37,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 
+from hijridate import Gregorian, Hijri
 from pydantic import BaseModel, Field, model_validator
 
 ARTICLE_DISMISSAL_WITHOUT_AWARD = 80
@@ -45,6 +54,14 @@ RESIGNATION_FULL_YEARS = 10
 CENTS = Decimal("0.01")
 FRACTION_PRECISION = Decimal("0.0001")
 
+UMM_AL_QURA_FIRST_DATE = date(1924, 8, 1)
+UMM_AL_QURA_LAST_DATE = date(2077, 11, 16)
+
+
+class ServiceCalendar(StrEnum):
+    HIJRI = "hijri"
+    GREGORIAN = "gregorian"
+
 
 class TerminationReason(StrEnum):
     EMPLOYER_TERMINATION = "employer_termination"
@@ -60,11 +77,20 @@ class EndOfServiceRequest(BaseModel):
     start_date: date
     end_date: date
     reason: TerminationReason
+    calendar: ServiceCalendar = ServiceCalendar.HIJRI
 
     @model_validator(mode="after")
-    def _end_after_start(self) -> EndOfServiceRequest:
+    def _valid_dates(self) -> EndOfServiceRequest:
         if self.end_date < self.start_date:
             raise ValueError("end_date must not be before start_date")
+        if self.calendar is ServiceCalendar.HIJRI and not (
+            UMM_AL_QURA_FIRST_DATE <= self.start_date
+            and self.end_date <= UMM_AL_QURA_LAST_DATE
+        ):
+            raise ValueError(
+                f"Hijri calculation supports dates from {UMM_AL_QURA_FIRST_DATE} "
+                f"to {UMM_AL_QURA_LAST_DATE}"
+            )
         return self
 
 
@@ -76,6 +102,7 @@ class BreakdownLine(BaseModel):
 
 
 class EndOfServiceResult(BaseModel):
+    calendar: ServiceCalendar
     service_years: Decimal
     full_award: Decimal
     entitlement_fraction: Decimal
@@ -88,20 +115,39 @@ def _to_cents(value: Decimal) -> Decimal:
     return value.quantize(CENTS, rounding=ROUND_HALF_UP)
 
 
-def _anniversary(start: date, years: int) -> date:
+def _gregorian_anniversary(start: date, years: int) -> date:
     try:
         return start.replace(year=start.year + years)
     except ValueError:  # 29 Feb start, non-leap target year
         return date(start.year + years, 2, 28)
 
 
-def service_years(start: date, end: date) -> Decimal:
-    """Calendar service length: whole anniversaries plus a pro-rata partial year."""
-    whole = end.year - start.year
-    if _anniversary(start, whole) > end:
+def _hijri_anniversary(start: date, years: int) -> date:
+    h = Gregorian.fromdate(start).to_hijri()
+    month_start = Hijri(h.year + years, h.month, 1)
+    day = min(h.day, month_start.month_length())
+    g = Hijri(h.year + years, h.month, day).to_gregorian()
+    return date(g.year, g.month, g.day)
+
+
+def _hijri_year_gap(start: date, end: date) -> int:
+    return Gregorian.fromdate(end).to_hijri().year - Gregorian.fromdate(start).to_hijri().year
+
+
+def service_years(
+    start: date, end: date, calendar: ServiceCalendar = ServiceCalendar.HIJRI
+) -> Decimal:
+    """Service length in the chosen calendar: whole anniversaries plus a pro-rata part."""
+    if calendar is ServiceCalendar.HIJRI:
+        anniversary = _hijri_anniversary
+        whole = _hijri_year_gap(start, end)
+    else:
+        anniversary = _gregorian_anniversary
+        whole = end.year - start.year
+    if anniversary(start, whole) > end:
         whole -= 1
-    last = _anniversary(start, whole)
-    next_ = _anniversary(start, whole + 1)
+    last = anniversary(start, whole)
+    next_ = anniversary(start, whole + 1)
     partial = Decimal((end - last).days) / Decimal((next_ - last).days)
     return Decimal(whole) + partial
 
@@ -117,7 +163,7 @@ def _resignation_fraction(years: Decimal) -> Decimal:
 
 
 def calculate_end_of_service(req: EndOfServiceRequest) -> EndOfServiceResult:
-    years = service_years(req.start_date, req.end_date)
+    years = service_years(req.start_date, req.end_date, req.calendar)
     wage = req.last_monthly_wage
 
     half_rate_years = min(years, Decimal(HALF_RATE_BAND_YEARS))
@@ -160,6 +206,7 @@ def calculate_end_of_service(req: EndOfServiceRequest) -> EndOfServiceResult:
             fraction = Decimal(1)
 
     return EndOfServiceResult(
+        calendar=req.calendar,
         service_years=_to_cents(years),
         full_award=full_award,
         entitlement_fraction=fraction.quantize(FRACTION_PRECISION, rounding=ROUND_HALF_UP),
