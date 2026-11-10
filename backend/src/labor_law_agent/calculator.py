@@ -2,15 +2,20 @@
 
 Pure function, no I/O.
 
-Rules encoded (TO VERIFY against the current BOE Arabic consolidation before release):
+Rules encoded, checked against the BOE consolidated Arabic text (laws.boe.gov.sa, Labor Law
+M/51 1426H as amended through 1446H; printed 1448/05/30H; Articles 81, 84, 85, 87 show no
+amendment, Art. 80 is amended and was read in its current wording):
 - Art. 84: half a month's wage for each of the first five years of service and one
-  month's wage for each year after that; partial years count pro rata. The award is
-  computed on the last wage.
-- Art. 85: on resignation, one third of the award for 2 to <5 years of service, two
-  thirds for 5 to <10 years, the full award for 10 years or more; nothing below 2 years.
-- Art. 87: full award despite leaving at the worker's own initiative in the cases the
-  article lists (force majeure, a female worker within the set period after marriage or
-  childbirth, or leaving under Art. 81).
+  month's wage for each later year; parts of a year count pro rata; the last wage is
+  the basis.
+- Art. 85 (resignation): one third of the award for service of at least two and at most
+  five consecutive years ("لا تقل ... عن سنتين ... ولا تزيد على خمس سنوات"), two thirds when
+  it exceeds five years but is under ten, the full award at ten years or more; nothing
+  under two years.
+- Art. 87: full award despite Art. 85 when the worker leaves due to force majeure, or a
+  female worker ends the contract within six months of her marriage contract or three
+  months of giving birth.
+- Art. 81: a worker who leaves in the cases it lists keeps all statutory rights (full award).
 - Art. 80: no award when the employer terminates under Article 80.
 
 Service length is measured in calendar years: whole years count anniversaries of the
@@ -27,13 +32,14 @@ from enum import StrEnum
 from pydantic import BaseModel, Field, model_validator
 
 ARTICLE_DISMISSAL_WITHOUT_AWARD = 80
+ARTICLE_WORKER_LEAVES_WITH_RIGHTS = 81
 ARTICLE_AWARD = 84
 ARTICLE_RESIGNATION = 85
 ARTICLE_FULL_AWARD_EXCEPTIONS = 87
 
 HALF_RATE_BAND_YEARS = 5
 RESIGNATION_MIN_YEARS = 2
-RESIGNATION_TWO_THIRDS_YEARS = 5
+RESIGNATION_ONE_THIRD_MAX_YEARS = 5  # inclusive: exactly five years still gets one third
 RESIGNATION_FULL_YEARS = 10
 
 CENTS = Decimal("0.01")
@@ -44,6 +50,7 @@ class TerminationReason(StrEnum):
     EMPLOYER_TERMINATION = "employer_termination"
     CONTRACT_EXPIRY = "contract_expiry"
     RESIGNATION = "resignation"
+    ARTICLE_81_WORKER_LEAVES = "article_81_worker_leaves"
     ARTICLE_87_EXCEPTION = "article_87_exception"
     ARTICLE_80_DISMISSAL = "article_80_dismissal"
 
@@ -102,7 +109,7 @@ def service_years(start: date, end: date) -> Decimal:
 def _resignation_fraction(years: Decimal) -> Decimal:
     if years < RESIGNATION_MIN_YEARS:
         return Decimal(0)
-    if years < RESIGNATION_TWO_THIRDS_YEARS:
+    if years <= RESIGNATION_ONE_THIRD_MAX_YEARS:
         return Decimal(1) / Decimal(3)
     if years < RESIGNATION_FULL_YEARS:
         return Decimal(2) / Decimal(3)
@@ -140,6 +147,9 @@ def calculate_end_of_service(req: EndOfServiceRequest) -> EndOfServiceResult:
         case TerminationReason.RESIGNATION:
             fraction = _resignation_fraction(years)
             articles.append(ARTICLE_RESIGNATION)
+        case TerminationReason.ARTICLE_81_WORKER_LEAVES:
+            fraction = Decimal(1)
+            articles.append(ARTICLE_WORKER_LEAVES_WITH_RIGHTS)
         case TerminationReason.ARTICLE_87_EXCEPTION:
             fraction = Decimal(1)
             articles.append(ARTICLE_FULL_AWARD_EXCEPTIONS)

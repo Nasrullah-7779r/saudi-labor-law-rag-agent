@@ -31,7 +31,7 @@ def _calc(end: date, reason: R, wage: Decimal = WAGE):
 # Expected values by hand (wage 10000):
 #   years = whole anniversaries + leftover days / days in that service year
 #   full = 0.5*wage*min(y,5) + wage*max(y-5,0), each line rounded half-up to cents
-#   resignation fraction: 0 below 2y, 1/3 for 2 to <5, 2/3 for 5 to <10, 1 from 10y
+#   resignation fraction (Art. 85): 0 below 2y, 1/3 for 2 to 5 inclusive, 2/3 above 5 to <10, 1 from 10y
 @pytest.mark.parametrize(
     ("end", "reason", "amount", "articles"),
     [
@@ -43,7 +43,7 @@ def _calc(end: date, reason: R, wage: Decimal = WAGE):
         (_on(2, 73), R.EMPLOYER_TERMINATION, "10997.27", [84]),
         (_on(2, -1), R.RESIGNATION, "0.00", [84, 85]),  # 1 + 364/365 = 1.997y, under 2
         (_on(2), R.RESIGNATION, "3333.33", [84, 85]),  # exactly 2 -> 1/3 of 10000
-        (_on(5), R.RESIGNATION, "16666.67", [84, 85]),  # exactly 5 -> 2/3 of 25000
+        (_on(5), R.RESIGNATION, "8333.33", [84, 85]),  # exactly 5 -> still 1/3 of 25000 (inclusive)
         (_on(10), R.RESIGNATION, "75000.00", [84, 85]),  # exactly 10 -> full
         (_on(3), R.ARTICLE_87_EXCEPTION, "15000.00", [84, 87]),
         (_on(3), R.ARTICLE_80_DISMISSAL, "0.00", [80, 84]),
@@ -131,6 +131,11 @@ def test_breakdown_two_lines_beyond_five_years() -> None:
         (_on(7), R.RESIGNATION, "45000.00", "0.6667"),
         (_on(10), R.RESIGNATION, "75000.00", "1.0000"),
         (_on(1), R.RESIGNATION, "5000.00", "0.0000"),
+        (_on(2), R.RESIGNATION, "10000.00", "0.3333"),  # exactly 2y -> 1/3
+        (_on(5), R.RESIGNATION, "25000.00", "0.3333"),  # exactly 5y -> 1/3 (inclusive)
+        (_on(5, 1), R.RESIGNATION, "25027.40", "0.6667"),  # 5y + 1 day -> 2/3
+        (_on(10, -1), R.RESIGNATION, "74972.60", "0.6667"),  # just under 10y -> 2/3
+        (_on(12), R.ARTICLE_81_WORKER_LEAVES, "95000.00", "1.0000"),
         (_on(12), R.ARTICLE_80_DISMISSAL, "95000.00", "0.0000"),  # full award still reported
         (_on(1), R.ARTICLE_87_EXCEPTION, "5000.00", "1.0000"),
     ],
@@ -181,8 +186,9 @@ def _calc_between(start: date, end: date, reason: R, wage: Decimal = WAGE):
         (date(2011, 3, 1), date(2013, 2, 28), "0.0000"),
         # one day short of 10 years across three leap days (3652 days; days/365 > 10 -> full)
         (date(2012, 1, 1), date(2021, 12, 31), "0.6667"),
-        # exactly on the anniversaries, across leap days, the higher band applies
-        (date(2012, 1, 1), date(2017, 1, 1), "0.6667"),
+        # exactly on the anniversaries, across leap days: 5y is still 1/3 (upper bound inclusive)
+        (date(2012, 1, 1), date(2017, 1, 1), "0.3333"),
+        (date(2012, 1, 1), date(2017, 1, 2), "0.6667"),
         (date(2011, 3, 1), date(2013, 3, 1), "0.3333"),
         (date(2012, 1, 1), date(2022, 1, 1), "1.0000"),
     ],
@@ -247,3 +253,11 @@ def test_breakdown_lines_add_up_to_full_award_exactly(
 ) -> None:
     result = _calc_between(start, end, reason, wage=Decimal(wage))
     assert sum(line.amount for line in result.breakdown) == result.full_award
+
+
+@pytest.mark.parametrize(("years", "amount"), [(1, "5000.00"), (12, "95000.00")])
+def test_article_81_worker_leaves_gets_full_award(years: int, amount: str) -> None:
+    result = _calc(_on(years), R.ARTICLE_81_WORKER_LEAVES)
+    assert result.amount == result.full_award == Decimal(amount)
+    assert result.entitlement_fraction == Decimal("1.0000")
+    assert result.applied_articles == [81, 84]
