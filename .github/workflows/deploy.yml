@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+env:
+  AWS_REGION: us-east-1 # must match infra/*/variables.tf and the live backend block
+
 permissions:
   contents: read
 
@@ -42,9 +45,8 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
       - run: >-
           terraform init -input=false
           -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
-          -backend-config="region=${{ vars.AWS_REGION }}"
-      - run: terraform apply -input=false -auto-approve -var="aws_region=${{ vars.AWS_REGION }}"
+      - run: terraform apply -input=false -auto-approve

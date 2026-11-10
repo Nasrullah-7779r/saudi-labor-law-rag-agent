@@ -22,15 +22,20 @@ Requires Terraform >= 1.11 (native S3 locking) and admin AWS credentials on your
 ```bash
 cd infra/bootstrap
 terraform init
-terraform apply -var="state_bucket_name=<globally-unique-name>" -var="aws_region=<region>"
+terraform apply -var="state_bucket_name=<globally-unique-name>"
 terraform output
 ```
 
-Keep the resulting `terraform.tfstate` safe (it is git-ignored). Then set these GitHub **repository variables** (Settings → Secrets and variables → Actions → Variables — not secrets, none are credentials):
+If the account already has a GitHub OIDC provider (AWS allows one per URL), import it before `apply`, and run `terraform state rm aws_iam_openid_connect_provider.github_actions` before any `destroy` so other projects keep it:
+
+```bash
+terraform import -var="state_bucket_name=<name>" aws_iam_openid_connect_provider.github_actions arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com
+```
+
+Keep the resulting `terraform.tfstate` safe (it is git-ignored). Region is fixed to `us-east-1` in code (`variables.tf`, live backend block, workflow `env`). Then set these GitHub **repository variables** (Settings → Secrets and variables → Actions → Variables — not secrets, none are credentials):
 
 | Variable | Value |
 | --- | --- |
-| `AWS_REGION` | same `aws_region` used at bootstrap (bucket region) |
 | `TF_STATE_BUCKET` | `state_bucket_name` output |
 | `AWS_PLAN_ROLE_ARN` | `github_plan_role_arn` output |
 | `AWS_DEPLOY_ROLE_ARN` | `github_deploy_role_arn` output |
@@ -39,11 +44,10 @@ Local plan against remote state:
 
 ```bash
 cd infra/live
-terraform init -backend-config="bucket=<bucket>" -backend-config="region=<region>"
+terraform init -backend-config="bucket=<bucket>"
 terraform plan
 ```
 
 Known trade-offs (revisit once the live stack has real resources):
 - The deploy role has `AdministratorAccess`; scope it down. Protect `main` (required reviews + required `CI` checks), since any workflow on `main` can assume it.
 - Any same-repo PR can assume the read-only plan role. Fork PRs get no OIDC token, so their plan job fails.
-- Bootstrap fails with `EntityAlreadyExists` if the account already has a GitHub OIDC provider; import it first.

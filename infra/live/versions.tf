@@ -8,10 +8,11 @@ terraform {
     }
   }
 
-  # Partial config: bucket and region come from -backend-config in CI/locally
+  # Partial config: bucket comes from -backend-config in CI/locally
   # (see README "Bootstrap"). Native S3 locking, no DynamoDB table.
   backend "s3" {
     key          = "live/terraform.tfstate"
+    region       = "us-east-1"
     use_lockfile = true
     encrypt      = true
   }
