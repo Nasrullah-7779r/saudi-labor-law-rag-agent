@@ -1,8 +1,10 @@
 """Article parser: raw BOE Arabic HTML -> list[Article]. Pure, no I/O.
 
 Assumptions about the page (re-check against a saved real BOE page):
-- each article starts at a heading whose text is ``المادة <number>`` (Arabic-Indic or
-  Western digits); text up to the next heading belongs to that article;
+- each article starts at a heading whose text is ``المادة <number>``, where the number is
+  an ordinal in words (``المادة الرابعة والثمانون``, as on the BOE site) or digits
+  (Arabic-Indic, Persian or Western); colons and Latin words (the site's "Article Changes" label) around
+  the heading are ignored; text up to the next heading belongs to that article;
 - part headings start with ``الباب`` and chapter headings with ``الفصل``; a new part
   resets the current chapter;
 - amending-decree notes are paragraphs starting with ``عدلت``/``عُدلت``/``أضيفت`` or
@@ -19,8 +21,12 @@ from datetime import date
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
+from labor_law_agent.ingest.ordinals import arabic_ordinal_to_int
+
 _DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
-_ARTICLE_RE = re.compile(r"^\s*المادة\s+([0-9٠-٩۰-۹]+)\s*[:：]?\s*$")
+_ARTICLE_RE = re.compile(r"^المادة\s+(.+)$")
+_DIGITS_RE = re.compile(r"^[0-9٠-٩۰-۹]+$")
+_HEADING_NOISE_RE = re.compile(r"[A-Za-z]+|[:：]")  # "Article Changes" label, colons
 _PART_RE = re.compile(r"^\s*الباب\b")
 _CHAPTER_RE = re.compile(r"^\s*الفصل\b")
 _AMEND_RE = re.compile(r"^\s*(عدلت|عُدلت|عُدِّلت|أضيفت|ألغيت)")
@@ -41,6 +47,18 @@ class Article(BaseModel):
 
 def to_western_digits(text: str) -> str:
     return text.translate(_DIGITS)
+
+
+def article_number_from_heading(text: str) -> int | None:
+    """Article number if ``text`` is a whole article heading, else None."""
+    cleaned = " ".join(_HEADING_NOISE_RE.sub(" ", text).split())
+    m = _ARTICLE_RE.match(cleaned)
+    if not m:
+        return None
+    number = m.group(1)
+    if _DIGITS_RE.match(number):
+        return int(to_western_digits(number))
+    return arabic_ordinal_to_int(number)
 
 
 def parse_articles(html: str, *, source_url: str, version: date) -> list[Article]:
@@ -73,9 +91,9 @@ def parse_articles(html: str, *, source_url: str, version: date) -> list[Article
         text = " ".join(el.get_text(" ", strip=True).split())
         if not text:
             continue
-        if m := _ARTICLE_RE.match(text):
+        if (number := article_number_from_heading(text)) is not None:
             flush()
-            current_no = int(to_western_digits(m.group(1)))
+            current_no = number
             current_part = part
             current_chapter = chapter
             lines = []

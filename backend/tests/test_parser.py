@@ -5,6 +5,7 @@ import pytest
 
 from labor_law_agent.ingest.parser import (
     ArticleParseError,
+    article_number_from_heading,
     parse_articles,
     to_western_digits,
 )
@@ -174,3 +175,62 @@ def test_fixture_articles_carry_part() -> None:
     articles = parse_articles(FIXTURE, **KW)
     assert {a.part for a in articles} == {"الباب الأول: أحكام عامة"}
 
+
+
+@pytest.mark.parametrize(
+    ("heading", "expected"),
+    [
+        ("المادة الأولى", 1),
+        ("المادة الرابعة والثمانون", 84),
+        ("المادة المائة", 100),
+        ("المادة الأولى بعد المائة", 101),
+        ("المادة الثالثة والتسعون بعد المائة", 193),
+        ("المادة المئتان", 200),
+        ("المادة الأولى بعد المائتين", 201),
+        ("المادة الخامسة والأربعون بعد المائتين", 245),
+        ("المادة 7", 7),
+        ("المادة ١٢", 12),
+        ("المادة ۱۵", 15),
+        (": Article Changesالمادة الثالثة عشرة", 13),
+        (":المادة الثالثة:", 3),
+        ("Article Changes المادة ٤ :", 4),
+        ("  المادة   الأولى  ", 1),
+    ],
+)
+def test_article_number_from_heading(heading: str, expected: int) -> None:
+    assert article_number_from_heading(heading) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "المادة الخامسة من هذا النظام تسري على العمال.",
+        "تطبق المادة الخامسة على العامل.",
+        "المادة",
+        "الفصل الأول",
+        "",
+    ],
+)
+def test_article_number_from_heading_rejects_body_text(text: str) -> None:
+    assert article_number_from_heading(text) is None
+
+
+def test_parse_articles_with_word_headings_and_ordinal_reference() -> None:
+    reference = "المادة الخامسة من هذا النظام تسري على جميع العمال."
+    html = _page(
+        "<h3>المادة الأولى</h3><p>نص أول.</p>",
+        "<h3>المادة الثانية</h3><p>نص ثان.</p>",
+        f"<p>: Article Changes</p><h3>: Article Changesالمادة الثالثة</h3><p>{reference}</p>",
+        "<h3>المادة الرابعة</h3><p>نص رابع.</p>",
+        "<h3>المادة الخامسة</h3><p>نص خامس.</p>",
+        "<h3>المادة السادسة</h3><p>نص سادس.</p>",
+        "<h3>المادة السابعة</h3><p>نص سابع.</p>",
+        "<h3>المادة الثامنة</h3><p>نص ثامن.</p>",
+        "<h3>المادة التاسعة</h3><p>نص تاسع.</p>",
+        "<h3>المادة العاشرة</h3><p>نص عاشر.</p>",
+        "<h3>المادة الحادية عشرة</h3><p>نص.</p>",
+        "<h3>المادة الثانية عشرة</h3><p>نص.</p>",
+    )
+    articles = parse_articles(html, **KW)
+    assert [a.article_no for a in articles] == list(range(1, 13))
+    assert articles[2].text_ar == reference
