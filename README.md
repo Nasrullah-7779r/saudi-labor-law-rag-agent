@@ -10,7 +10,7 @@ main ──► Deploy: terraform apply ─────────────�
                                     state: s3://<bucket>/live/terraform.tfstate (+ .tflock, native S3 locking)
 ```
 
-- `infra/bootstrap/` — one-time, applied by a human with local state: state bucket, GitHub OIDC provider, plan/deploy roles.
+- `infra/bootstrap/` — split by concern (`state_bucket.tf`, `github_oidc.tf`, `iam_github_*_role.tf`); one-time, applied by a human with local state: state bucket, GitHub OIDC provider, plan/deploy roles.
 - `infra/live/` — everything else; planned on PRs, applied on merge to `main`.
 
 No AWS access keys are stored in GitHub. CI authenticates via GitHub OIDC; the deploy role trusts only `refs/heads/main`, the plan role only `pull_request` events from this repo.
