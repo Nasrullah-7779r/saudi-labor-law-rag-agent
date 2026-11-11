@@ -28,7 +28,7 @@ jobs:
       - run: uv run mypy src
       - run: uv run pytest
 
-  terraform-apply:
+  deploy:
     needs: backend
     runs-on: ubuntu-latest
     permissions:
@@ -42,6 +42,7 @@ jobs:
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: 1.17.1
+          terraform_wrapper: false # plain stdout for $(terraform output -raw ...)
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -49,4 +50,31 @@ jobs:
       - run: >-
           terraform init -input=false
           -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
-      - run: terraform apply -input=false -auto-approve
+      # The Lambda needs an image to exist before it can be created, so the
+      # ECR repo is applied first, then the image is pushed, then the rest.
+      - name: Apply ECR repository
+        run: terraform apply -input=false -auto-approve -target=aws_ecr_repository.backend
+      - name: Build and push backend image
+        working-directory: backend
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          REPO_URL=$(terraform -chdir=../infra/live output -raw backend_ecr_repository_url)
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${REPO_URL%%/*}"
+          # Re-runs of the same commit: the tag is immutable, so skip the push if it exists.
+          if aws ecr describe-images --repository-name "${REPO_URL#*/}" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "image $IMAGE_TAG already pushed"
+          else
+            docker build --platform linux/amd64 -t "$REPO_URL:$IMAGE_TAG" .
+            docker push "$REPO_URL:$IMAGE_TAG"
+          fi
+      - name: Apply infrastructure
+        run: terraform apply -input=false -auto-approve -var="backend_image_tag=${{ github.sha }}"
+      - name: Roll out backend image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          FUNCTION=$(terraform output -raw chat_lambda_function_name)
+          REPO_URL=$(terraform output -raw backend_ecr_repository_url)
+          aws lambda update-function-code --function-name "$FUNCTION" --image-uri "$REPO_URL:$IMAGE_TAG" >/dev/null
+          aws lambda wait function-updated-v2 --function-name "$FUNCTION"

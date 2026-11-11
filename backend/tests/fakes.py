@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
 
+from labor_law_agent.chat import ChatTurn
 from labor_law_agent.ingest.parser import Article
 from labor_law_agent.retrieval import RetrievedArticle
+from labor_law_agent.stream_events import StreamPart, TextStartPart
 
 _TOKEN = re.compile(r"\w+")
 
@@ -32,3 +34,11 @@ class InMemoryLawRetriever:
             )
             for score, a in scored[:k]
         ]
+
+
+class FailingChatResponder:
+    """ChatResponder fake: streams one text part, then raises mid-stream."""
+
+    async def respond(self, turn: ChatTurn) -> AsyncIterator[StreamPart]:
+        yield TextStartPart(id="text-1")
+        raise RuntimeError("boom")
