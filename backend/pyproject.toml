@@ -5,12 +5,19 @@ description = "Bilingual Saudi Labor Law RAG agent (backend)"
 requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.12",
+    "fastapi>=0.162.4",
     "hijridate>=2.6,<3",
     "pydantic>=2.7",
+    "uvicorn>=0.54.0",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "httpx>=0.28.1",
+]
 
 [build-system]
 requires = ["hatchling"]

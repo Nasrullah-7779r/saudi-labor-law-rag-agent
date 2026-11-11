@@ -2,6 +2,19 @@
 
 Bilingual (AR/EN) serverless RAG agent over the Saudi Labor Law, with article citations. Not legal advice.
 
+## API
+
+Live tracer: API Gateway REST (stream transfer mode) → Lambda (container, Lambda Web Adapter `response_stream`) → FastAPI.
+
+```
+curl -N -X POST "$(terraform -chdir=infra/live output -raw api_url)/chat" \
+  -H 'content-type: application/json' -d '{"message":"What is the notice period?"}'
+```
+
+`GET /health` returns `{"status":"ok"}`. Event contract: [docs/stream-protocol.md](docs/stream-protocol.md). Run locally: `cd backend && uv run uvicorn labor_law_agent.api:app --reload`.
+
+The deploy workflow applies the ECR repo, pushes `backend:<sha>`, applies the rest, then rolls the image out with `update-function-code` (Terraform ignores `image_uri` after creation). Reserved concurrency (`chat_lambda_reserved_concurrency`, default 5) needs account headroom: Lambda keeps 100 unreserved, so accounts on the default 10-concurrency quota must request an increase or set it to `-1`.
+
 ## Infrastructure
 
 ```
