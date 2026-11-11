@@ -15,6 +15,8 @@ UI_MESSAGE_STREAM_HEADER = "x-vercel-ai-ui-message-stream"
 UI_MESSAGE_STREAM_VERSION = "v1"
 SSE_DONE = "data: [DONE]\n\n"
 
+# camelCase fields (messageId, errorText) are the protocol's wire names; keep them.
+
 
 class StartPart(BaseModel):
     type: Literal["start"] = "start"
