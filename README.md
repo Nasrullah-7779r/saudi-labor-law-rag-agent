@@ -54,6 +54,26 @@ Region is fixed to `us-east-1` in code (`variables.tf`, live backend block, work
 | `TF_STATE_BUCKET` | `state_bucket_name` output |
 | `AWS_PLAN_ROLE_ARN` | `github_plan_role_arn` output |
 | `AWS_DEPLOY_ROLE_ARN` | `github_deploy_role_arn` output |
+| `AWS_INGEST_ROLE_ARN` | `github_ingest_role_arn` output |
+| `PINECONE_INDEX_NAME` | e.g. `saudi-labor-law` (created on first ingest) |
+
+## Law ingest
+
+Source: the Arabic consolidated Labor Law on the Bureau of Experts (BOE) site,
+<https://laws.boe.gov.sa/BoeLaws/Laws/LawDetails/08381293-6388-48e2-8ad2-a9a700f2aa94/1>.
+The text is fetched at run time; it is not committed (tests use a short excerpt fixture).
+
+```
+BOE HTML ─► parse_articles ─► chunk_article (≤1500 chars) ─► Bedrock cohere.embed-multilingual-v3 ─► Pinecone upsert
+              │ aborts on gaps/duplicates            ids art-<NNN>-<NN>, stale ids deleted
+```
+
+1. After `live` applies, set the key once: `aws secretsmanager put-secret-value --secret-id saudi-labor-law-rag-agent/pinecone-api-key --secret-string '<key>'`.
+2. Run **Actions → Ingest** with the version date of the latest amendment in force. The serverless index (1024-d, cosine, `us-east-1`) is created on first run. Re-runs are idempotent.
+
+Known gaps (v1):
+- Articles 229–242 (penalties part) are skipped: the BOE page mixes pre-2013 numbering with renumbered and added articles (duplicate 233–235, "229 bis", unheaded "currently X / formerly Y" items).
+- The BOE page only shows the first chapter heading, so `chapter` is mostly empty; `part` is set on every article.
 
 Local plan against remote state:
 
