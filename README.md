@@ -13,7 +13,7 @@ curl -N -X POST "$(terraform -chdir=infra/live output -raw api_url)/chat" \
 
 `GET /health` returns `{"status":"ok"}`. Event contract: [docs/stream-protocol.md](docs/stream-protocol.md). Run locally: `cd backend && uv run uvicorn labor_law_agent.api:app --reload`.
 
-The deploy workflow applies the ECR repo, pushes `backend:<sha>`, applies the rest, then rolls the image out with `update-function-code` (Terraform ignores `image_uri` after creation). Reserved concurrency (`chat_lambda_reserved_concurrency`, default 5) needs account headroom: Lambda keeps 100 unreserved, so accounts on the default 10-concurrency quota must request an increase or set it to `-1`.
+The deploy workflow applies the ECR repo, pushes `backend:<sha>`, applies the rest, then rolls the image out with `update-function-code` (Terraform ignores `image_uri` after creation). Reserved concurrency (`chat_lambda_reserved_concurrency`) defaults to `-1` (none): this account's Lambda concurrency limit is 10, and Lambda keeps 100 unreserved, so nothing can be reserved. Until a Service Quotas increase ("Concurrent executions") lands, the stage throttle (2 req/s, burst 5) and the account limit of 10 are the caps; then set it to 5.
 
 ## Infrastructure
 
