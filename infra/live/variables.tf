@@ -10,12 +10,6 @@ variable "backend_image_tag" {
   default     = "bootstrap"
 }
 
-variable "chat_lambda_reserved_concurrency" {
-  description = "Reserved concurrency for the chat Lambda (cost/abuse cap). -1 = no reservation. Lambda keeps 100 executions unreserved, so a value > 0 needs an account limit above 100; this account is at 10 (Nov 2026). Set to 5 once a quota increase lands."
-  type        = number
-  default     = -1
-}
-
 variable "api_throttle_rate_limit" {
   description = "API Gateway stage steady-state request rate (requests/second)."
   type        = number

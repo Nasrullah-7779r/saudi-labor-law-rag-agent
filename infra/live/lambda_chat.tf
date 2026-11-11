@@ -37,14 +37,13 @@ resource "aws_iam_role_policy" "chat_lambda" {
 }
 
 resource "aws_lambda_function" "chat" {
-  function_name                  = "${local.name}-chat"
-  role                           = aws_iam_role.chat_lambda.arn
-  package_type                   = "Image"
-  image_uri                      = "${aws_ecr_repository.backend.repository_url}:${var.backend_image_tag}"
-  architectures                  = ["x86_64"]
-  memory_size                    = 1024
-  timeout                        = 120
-  reserved_concurrent_executions = var.chat_lambda_reserved_concurrency
+  function_name = "${local.name}-chat"
+  role          = aws_iam_role.chat_lambda.arn
+  package_type  = "Image"
+  image_uri     = "${aws_ecr_repository.backend.repository_url}:${var.backend_image_tag}"
+  architectures = ["x86_64"]
+  memory_size   = 1024
+  timeout       = 120
 
   environment {
     variables = {
