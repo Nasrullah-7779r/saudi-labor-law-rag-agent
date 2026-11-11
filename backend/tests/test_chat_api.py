@@ -124,13 +124,14 @@ def test_chat_emits_usage(client: TestClient) -> None:
     "body",
     [
         {"message": ""},
+        {"message": "   \n\t"},
         {"message": "x" * 2001},
         {},
         {"thread_id": "t-1"},
         {"message": "hello", "thread_id": "t" * 129},
         {"message": "hello", "thread_id": ""},
     ],
-    ids=["empty", "too-long", "missing", "missing-with-thread", "thread-too-long", "thread-empty"],
+    ids=["empty", "whitespace-only", "too-long", "missing", "missing-with-thread", "thread-too-long", "thread-empty"],
 )
 def test_chat_rejects_invalid_request(client: TestClient, body: dict[str, Any]) -> None:
     response = client.post("/chat", json=body)

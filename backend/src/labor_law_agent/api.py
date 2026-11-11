@@ -8,10 +8,11 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import AsyncIterator
+from typing import Annotated, Literal
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from labor_law_agent.chat import ChatResponder, ChatTurn, StubChatResponder
 from labor_law_agent.stream_events import (
@@ -31,12 +32,15 @@ MAX_THREAD_ID_CHARS = 128
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+    # Stripped before the length check, so whitespace-only input is rejected.
+    message: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_MESSAGE_CHARS)
+    ]
     thread_id: str | None = Field(default=None, min_length=1, max_length=MAX_THREAD_ID_CHARS)
 
 
 class HealthResponse(BaseModel):
-    status: str
+    status: Literal["ok"]
 
 
 async def _message_stream(responder: ChatResponder, turn: ChatTurn) -> AsyncIterator[str]:
