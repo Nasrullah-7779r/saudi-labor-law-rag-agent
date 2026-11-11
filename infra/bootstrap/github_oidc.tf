@@ -20,6 +20,7 @@ locals {
 locals {
   github_role_subs = {
     deploy = local.main_branch_sub
+    ingest = local.main_branch_sub
     plan   = local.pull_request_sub
   }
 }

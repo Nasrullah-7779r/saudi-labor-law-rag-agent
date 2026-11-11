@@ -234,3 +234,71 @@ def test_parse_articles_with_word_headings_and_ordinal_reference() -> None:
     articles = parse_articles(html, **KW)
     assert [a.article_no for a in articles] == list(range(1, 13))
     assert articles[2].text_ar == reference
+
+
+REAL_EXCERPT = (Path(__file__).parent / "fixtures" / "boe_real_excerpt.html").read_text(
+    encoding="utf-8"
+)
+
+
+def test_real_boe_excerpt_parses_articles_one_to_three() -> None:
+    assert [a.article_no for a in parse_articles(REAL_EXCERPT, **KW)] == [1, 2, 3]
+
+
+def test_real_boe_article_two_has_current_text_only() -> None:
+    art = parse_articles(REAL_EXCERPT, **KW)[1]
+    assert "يقصد بالألفاظ" in art.text_ar
+    assert "تعديل تعريف العامل" not in art.text_ar  # hidden prior-version popup
+    assert "تعديلات المادة" not in art.text_ar  # .article_btns button label
+
+
+def test_real_boe_nested_containers_do_not_duplicate_lines() -> None:
+    lines = parse_articles(REAL_EXCERPT, **KW)[1].text_ar.split("\n")
+    assert len(lines) == len(set(lines))
+    assert sum("يقصد بالألفاظ" in line for line in lines) == 1
+
+
+def test_real_boe_part_and_chapter_from_h3_headings() -> None:
+    articles = parse_articles(REAL_EXCERPT, **KW)
+    assert {a.part for a in articles} == {"الباب الأول: التعريفات والأحكام العامة"}
+    assert {a.chapter for a in articles} == {"الفصل الأول : التعريفات"}
+
+
+def _numbered_page(numbers: list[int]) -> str:
+    return _page(*[f"<h3>المادة {n}</h3><p>نص {n}.</p>" for n in numbers])
+
+
+def test_excluded_articles_are_dropped() -> None:
+    articles = parse_articles(_numbered_page([1, 2, 3, 4]), excluded=frozenset({3, 4}), **KW)
+    assert [a.article_no for a in articles] == [1, 2]
+
+
+def test_excluded_articles_not_required_by_gap_check() -> None:
+    articles = parse_articles(_numbered_page([1, 2, 5]), excluded=frozenset({3, 4}), **KW)
+    assert [a.article_no for a in articles] == [1, 2, 5]
+
+
+def test_gap_outside_excluded_still_fails() -> None:
+    with pytest.raises(ArticleParseError, match=r"missing article numbers: \[2\]"):
+        parse_articles(_numbered_page([1, 3, 5]), excluded=frozenset({4}), **KW)
+
+
+def test_duplicates_within_excluded_are_tolerated() -> None:
+    articles = parse_articles(_numbered_page([1, 2, 2, 3]), excluded=frozenset({2}), **KW)
+    assert [a.article_no for a in articles] == [1, 3]
+
+
+def test_duplicates_outside_excluded_still_fail() -> None:
+    with pytest.raises(ArticleParseError, match="duplicate"):
+        parse_articles(_numbered_page([1, 2, 2, 3]), excluded=frozenset({4}), **KW)
+
+
+def test_unheaded_text_after_excluded_article_is_dropped() -> None:
+    html = _page(
+        "<h3>المادة 1</h3><p>نص 1.</p>",
+        "<h3>المادة 2</h3><p>نص 2.</p>",
+        "<p>بند بلا عنوان بعد مادة مستبعدة.</p>",
+    )
+    articles = parse_articles(html, excluded=frozenset({2}), **KW)
+    assert [a.article_no for a in articles] == [1]
+    assert "بند بلا عنوان" not in articles[0].text_ar
