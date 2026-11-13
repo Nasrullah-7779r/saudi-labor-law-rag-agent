@@ -39,10 +39,21 @@ _AMEND_RE = re.compile(r"^\s*(عدلت|عُدلت|عُدِّلت|أضيفت|أل
 
 
 class ArticleParseError(ValueError):
-    pass
+    """Raised when parsed articles fail validation (none, gaps, duplicates, empty text)."""
 
 
 class Article(BaseModel):
+    """One article of the law as parsed from the BOE page.
+
+    Attributes:
+        article_no: Article number as an int (e.g. 84), whatever form the heading used.
+        part: Part heading (``الباب ...``) the article sits under, if any.
+        chapter: Chapter heading (``الفصل ...``) the article sits under, if any.
+        text_ar: Current Arabic text, one line per paragraph/line break.
+        source_url: Page the article was parsed from.
+        version: Date of the law version (latest amendment in force).
+    """
+
     article_no: int
     part: str | None
     chapter: str | None
@@ -52,11 +63,26 @@ class Article(BaseModel):
 
 
 def to_western_digits(text: str) -> str:
+    """Convert Arabic-Indic (٠-٩) and Persian (۰-۹) digits to 0-9; other characters unchanged.
+
+    Example:
+        >>> to_western_digits("المادة ١٢")
+        'المادة 12'
+    """
     return text.translate(_DIGITS)
 
 
 def article_number_from_heading(text: str) -> int | None:
-    """Article number if ``text`` is a whole article heading, else None."""
+    """Return the article number if ``text`` is a whole article heading, else None.
+
+    Accepts digit headings (``المادة ١٢``, ``المادة 12``) and ordinal-word headings
+    (``المادة الرابعة والثمانون``). Colons and Latin labels such as "Article Changes" are
+    ignored. Body text that merely mentions an article returns None.
+
+    Example:
+        >>> article_number_from_heading("المادة الرابعة والثمانون :")
+        84
+    """
     cleaned = " ".join(_HEADING_NOISE_RE.sub(" ", text).split())
     m = _ARTICLE_RE.match(cleaned)
     if not m:
@@ -74,8 +100,21 @@ def parse_articles(
     version: date,
     excluded: frozenset[int] = frozenset(),
 ) -> list[Article]:
-    """Parse the page; articles numbered in ``excluded`` (and any unheaded text after them)
-    are dropped and not expected by the continuity check."""
+    """Parse the BOE Labor Law HTML into validated articles, in page order.
+
+    Args:
+        html: Raw HTML of the BOE law page (or an excerpt with the same layout).
+        source_url: URL stored on every article.
+        version: Law version date stored on every article.
+        excluded: Article numbers to drop. Their text, and any unheaded text that follows
+            them, is discarded, and the gap check does not expect them.
+
+    Returns:
+        Articles numbered 1..N (minus ``excluded``) with part/chapter and current text.
+
+    Raises:
+        ArticleParseError: No articles, a gap, a duplicate number, or an empty article.
+    """
     soup = BeautifulSoup(html, "html.parser")
     for node in soup.select(_DROPPED_SELECTOR):
         node.decompose()
@@ -89,6 +128,7 @@ def parse_articles(
     lines: list[str] = []
 
     def flush() -> None:
+        """Store the article collected so far (unless excluded) before a new one starts."""
         if current_no is not None and current_no not in excluded:
             articles.append(
                 Article(
@@ -133,6 +173,11 @@ def parse_articles(
 
 
 def _validate(articles: list[Article], excluded: frozenset[int]) -> None:
+    """Fail loudly so a bad parse never reaches the index.
+
+    Raises:
+        ArticleParseError: Naming the duplicate, missing or empty article numbers.
+    """
     if not articles:
         raise ArticleParseError("no articles found")
     numbers = [a.article_no for a in articles]

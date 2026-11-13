@@ -19,6 +19,16 @@ CHUNK_LANG = "ar"  # chunks hold the Arabic BOE text only
 
 
 class ArticleChunk(BaseModel):
+    """One embeddable piece of an article; one chunk = one vector in the index.
+
+    Attributes:
+        id: Deterministic vector id, e.g. ``art-002-01`` (see ``chunk_id``).
+        article_no: Article this piece belongs to (shared by all its chunks).
+        chunk_no: Position of this piece within the article, from 0.
+        part, chapter, source_url, version: Copied from the article.
+        text_ar: The piece's Arabic text (at most ``MAX_CHUNK_CHARS``).
+    """
+
     id: str
     article_no: int
     chunk_no: int
@@ -29,7 +39,11 @@ class ArticleChunk(BaseModel):
     version: date
 
     def vector_metadata(self) -> dict[str, str | int]:
-        """Vector-store metadata; ``None`` fields are omitted (Pinecone rejects nulls)."""
+        """Metadata stored next to the vector, used to cite and show the article.
+
+        ``None`` fields (part/chapter) are left out because Pinecone rejects nulls.
+        The text is stored under ``text``, the key langchain-pinecone reads by default.
+        """
         metadata: dict[str, str | int] = {
             "article_no": self.article_no,
             "chunk_no": self.chunk_no,
@@ -46,10 +60,20 @@ class ArticleChunk(BaseModel):
 
 
 def chunk_id(article_no: int, chunk_no: int) -> str:
+    """Deterministic id, so re-ingesting overwrites the same vectors.
+
+    Example:
+        >>> chunk_id(2, 1)
+        'art-002-01'
+    """
     return f"{CHUNK_ID_PREFIX}{article_no:03d}-{chunk_no:02d}"
 
 
 def _split_long_line(line: str, max_chars: int) -> list[str]:
+    """Split one line at spaces into pieces of at most ``max_chars``.
+
+    A single word longer than the limit is cut into fixed-size slices.
+    """
     pieces: list[str] = []
     current = ""
     for word in line.split(" "):
@@ -69,6 +93,10 @@ def _split_long_line(line: str, max_chars: int) -> list[str]:
 
 
 def _split_text(text: str, max_chars: int) -> list[str]:
+    """Pack whole lines into pieces of at most ``max_chars``, keeping their order.
+
+    Lines longer than the limit are first split at spaces (``_split_long_line``).
+    """
     parts: list[str] = []
     current = ""
     for line in text.split("\n"):
@@ -85,7 +113,15 @@ def _split_text(text: str, max_chars: int) -> list[str]:
 
 
 def chunk_article(article: Article, max_chars: int = MAX_CHUNK_CHARS) -> list[ArticleChunk]:
-    """Ordered chunks sharing ``article_no``; one chunk when the article fits."""
+    """Split an article into ordered chunks that all share its ``article_no``.
+
+    Args:
+        article: Parsed article.
+        max_chars: Upper bound per chunk; default leaves headroom under Cohere's 2048.
+
+    Returns:
+        One chunk when the article fits, otherwise several with ``chunk_no`` 0, 1, ...
+    """
     return [
         ArticleChunk(
             id=chunk_id(article.article_no, i),

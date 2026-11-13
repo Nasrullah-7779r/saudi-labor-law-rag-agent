@@ -20,10 +20,12 @@ LAST_ARTICLE_NO = 245
 
 
 class IngestAbortedError(RuntimeError):
-    pass
+    """Raised when the parsed law looks incomplete (e.g. a truncated page)."""
 
 
 class IngestSummary(BaseModel):
+    """What one ingest run did; printed as JSON by the CLI."""
+
     articles: int
     chunks: int
     excluded_article_nos: list[int]
@@ -40,6 +42,24 @@ def run_ingest(
     excluded: frozenset[int] = PENALTIES_PART_EXCLUDED,
     last_article_no: int = LAST_ARTICLE_NO,
 ) -> IngestSummary:
+    """Parse, chunk, embed and store the law; safe to re-run.
+
+    Args:
+        html: Raw BOE page HTML.
+        source_url: URL stored on every article.
+        version: Law version date stored on every article.
+        embedder: Turns chunk texts into vectors.
+        index: Stores the vectors and removes stale ones.
+        excluded: Article numbers to skip (default: penalties part 229-242).
+        last_article_no: Expected last article; guards against a truncated page.
+
+    Returns:
+        Counts of articles and chunks, the skipped numbers and the deleted stale ids.
+
+    Raises:
+        ArticleParseError: The page failed parser validation.
+        IngestAbortedError: The last article is not ``last_article_no``.
+    """
     articles = parse_articles(html, source_url=source_url, version=version, excluded=excluded)
     if (found := articles[-1].article_no) != last_article_no:
         raise IngestAbortedError(f"last article is {found}, expected {last_article_no}")

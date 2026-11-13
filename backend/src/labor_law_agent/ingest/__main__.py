@@ -20,6 +20,11 @@ from labor_law_agent.ingest.vector_index import PineconeChunkIndex
 
 
 def _open_chunk_index(pc: Pinecone, name: str) -> PineconeChunkIndex:
+    """Return a writer for index ``name``, creating it on first run.
+
+    New indexes are serverless (AWS us-east-1), 1024 dimensions to match Cohere,
+    compared by cosine similarity. Both settings are fixed once the index exists.
+    """
     if not pc.has_index(name):
         pc.create_index(
             name=name,
@@ -31,6 +36,8 @@ def _open_chunk_index(pc: Pinecone, name: str) -> PineconeChunkIndex:
 
 
 def main() -> None:
+    """CLI entry point: read the Pinecone key from Secrets Manager, run the ingest, print
+    the summary as JSON."""
     parser = argparse.ArgumentParser(description="Ingest the BOE Labor Law into Pinecone.")
     parser.add_argument("--html-file", type=Path, required=True)
     parser.add_argument("--version", type=date.fromisoformat, required=True)

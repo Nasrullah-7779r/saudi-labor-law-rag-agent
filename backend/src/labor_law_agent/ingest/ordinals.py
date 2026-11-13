@@ -47,6 +47,11 @@ _AFTER_HUNDREDS = {"بعد المائه": 100, "بعد المائتين": 200}
 
 
 def normalize_arabic(text: str) -> str:
+    """Normalize spelling so ordinal words compare equal.
+
+    Removes diacritics and tatweel, unifies alef forms, ى->ي, ة->ه, مئة->مائة, and
+    collapses whitespace.
+    """
     text = _DIACRITICS.sub("", text)
     text = re.sub("[أإآ]", "ا", text).replace("ى", "ي").replace("ة", "ه")
     text = text.replace("مئه", "مائه").replace("مئتان", "مائتان").replace("مئتين", "مائتين")
@@ -54,6 +59,7 @@ def normalize_arabic(text: str) -> str:
 
 
 def _below_hundred(words: str) -> int | None:
+    """Value of a normalized ordinal phrase from 1 to 99, or None if it isn't one."""
     if words in _UNITS:
         return _UNITS[words]
     if words == _TEN:
@@ -71,7 +77,12 @@ def _below_hundred(words: str) -> int | None:
 
 
 def arabic_ordinal_to_int(text: str) -> int | None:
-    """Return the number for a whole ordinal phrase, or None if it isn't one."""
+    """Return the number for a whole ordinal phrase, or None if it isn't one.
+
+    Example:
+        >>> arabic_ordinal_to_int("الخامسة والأربعون بعد المائتين")
+        245
+    """
     words = normalize_arabic(text)
     if words in _HUNDREDS:
         return _HUNDREDS[words]
