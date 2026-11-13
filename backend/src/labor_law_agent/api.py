@@ -1,6 +1,7 @@
 """HTTP API: `POST /chat` (SSE stream) and `GET /health`.
 
-Run behind Lambda Web Adapter in response-stream mode; locally: `uvicorn labor_law_agent.api:app`.
+Run behind Lambda Web Adapter in response-stream mode. Production app: `labor_law_agent.main:app`;
+stub app with no AWS access: `uvicorn labor_law_agent.api:app`.
 """
 
 from __future__ import annotations

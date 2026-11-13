@@ -27,9 +27,9 @@ Each event is `data: <json>\n\n`. The stream ends with `data: [DONE]`.
 | --- | --- | --- |
 | `start` | `messageId` | first |
 | `data-tool-status` | `data: {tool: "search_labor_law" \| "calc_end_of_service", state: "running" \| "done"}` | around each tool call |
-| `text-start` / `text-delta` / `text-end` | `id`, `delta` (delta only) | answer text; concatenate the deltas that share an `id` |
-| `data-citations` | `data: {citations: [{article_no: int, excerpt: str}]}` | after the text |
-| `data-usage` | `data: {input_tokens, output_tokens, remaining_questions}` | before `finish` |
+| `text-start` / `text-delta` / `text-end` | `id`, `delta` (delta only) | answer text; concatenate the deltas that share an `id`. One text part per model turn, so text written before a tool call gets its own `id` |
+| `data-citations` | `data: {citations: [{article_no: int, excerpt: str}]}` | after the text; retrieved articles the answer names ("Article N" / "المادة N"), best match first. Omitted when none |
+| `data-usage` | `data: {input_tokens, output_tokens, remaining_questions}` | before `finish`; tokens summed over the turn's model calls. `remaining_questions` is `0` until the usage guard (#6) |
 | `error` | `errorText` | a failure after streaming began (the status is already 200) |
 | `finish` | — | last JSON event, also after `error` |
 
