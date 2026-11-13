@@ -39,8 +39,11 @@ class TextEndPart(BaseModel):
     id: str
 
 
+ToolName = Literal["search_labor_law", "calc_end_of_service"]
+
+
 class ToolStatus(BaseModel):
-    tool: Literal["search_labor_law", "calc_end_of_service"]
+    tool: ToolName
     state: Literal["running", "done"]
 
 

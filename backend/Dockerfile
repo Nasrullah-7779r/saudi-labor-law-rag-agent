@@ -19,4 +19,4 @@ COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
 EXPOSE 8080
-CMD ["uvicorn", "labor_law_agent.api:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "labor_law_agent.main:app", "--host", "0.0.0.0", "--port", "8080"]
