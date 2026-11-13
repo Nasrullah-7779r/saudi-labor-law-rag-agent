@@ -18,17 +18,34 @@ _DELETE_BATCH = 1000  # Pinecone delete-by-ids limit per request
 
 
 class ChunkIndex(Protocol):
+    """Where embedded chunks are written (Pinecone in prod, fakes in tests)."""
+
     def upsert_chunks(self, chunks: Sequence[ArticleChunk], vectors: Sequence[list[float]]) -> None: ...
     def delete_stale(self, keep_ids: set[str]) -> list[str]: ...
 
 
 class PineconeChunkIndex:
+    """Writes article chunks into a Pinecone index and cleans up leftovers."""
+
     def __init__(self, index: Any) -> None:
+        """
+        Args:
+            index: A ``pinecone.Index`` client for the target index.
+        """
         self._index = index  # pinecone.Index
 
     def upsert_chunks(
         self, chunks: Sequence[ArticleChunk], vectors: Sequence[list[float]]
     ) -> None:
+        """Insert or overwrite chunks by id, 100 per request.
+
+        Args:
+            chunks: Chunks to store.
+            vectors: Embedding for each chunk, in the same order.
+
+        Raises:
+            ValueError: ``chunks`` and ``vectors`` differ in length.
+        """
         if len(chunks) != len(vectors):
             raise ValueError("chunks and vectors differ in length")
         rows = [(c.id, v, c.vector_metadata()) for c, v in zip(chunks, vectors, strict=True)]
@@ -36,7 +53,16 @@ class PineconeChunkIndex:
             self._index.upsert(vectors=rows[start : start + _UPSERT_BATCH])
 
     def delete_stale(self, keep_ids: set[str]) -> list[str]:
-        """Delete article-chunk IDs left over from a previous run (e.g. an article shrank)."""
+        """Delete ``art-*`` ids from a previous run that this run did not write.
+
+        Example: article 2 used to have 3 chunks and now has 2, so ``art-002-02`` goes.
+
+        Args:
+            keep_ids: Ids written by the current run.
+
+        Returns:
+            The deleted ids, sorted.
+        """
         pages: Iterable[list[str]] = self._index.list(prefix=CHUNK_ID_PREFIX)
         stale = sorted(i for page in pages for i in page if i not in keep_ids)
         for start in range(0, len(stale), _DELETE_BATCH):

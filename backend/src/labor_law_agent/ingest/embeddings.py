@@ -18,17 +18,38 @@ _MAX_TEXTS_PER_CALL = 96
 
 
 class DocumentEmbedder(Protocol):
+    """Anything that turns texts into embedding vectors (Bedrock in prod, fakes in tests)."""
+
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]: ...
 
 
 class CohereBedrockEmbedder:
+    """Embeds stored law text with Cohere Embed Multilingual v3 on Amazon Bedrock."""
+
     def __init__(
         self, bedrock_runtime: Any, model_id: str = COHERE_MULTILINGUAL_MODEL_ID
     ) -> None:
+        """
+        Args:
+            bedrock_runtime: A boto3 ``bedrock-runtime`` client.
+            model_id: Bedrock model id; defaults to the multilingual v3 model.
+        """
         self._client = bedrock_runtime  # boto3 "bedrock-runtime" client
         self._model_id = model_id
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        """Embed texts as ``search_document`` vectors, 96 texts per Bedrock call.
+
+        Args:
+            texts: Texts of at most 2048 characters each (``truncate`` is ``NONE``,
+                so longer texts fail instead of being silently cut).
+
+        Returns:
+            One 1024-float vector per text, in the same order.
+
+        Raises:
+            RuntimeError: Bedrock returned a different number of embeddings than sent.
+        """
         vectors: list[list[float]] = []
         for start in range(0, len(texts), _MAX_TEXTS_PER_CALL):
             batch = list(texts[start : start + _MAX_TEXTS_PER_CALL])
