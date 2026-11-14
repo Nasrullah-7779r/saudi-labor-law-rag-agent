@@ -15,6 +15,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
   backend:
     runs-on: ubuntu-latest
     defaults:
@@ -29,7 +44,7 @@ jobs:
       - run: uv run pytest
 
   deploy:
-    needs: backend
+    needs: [backend, frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -80,3 +95,23 @@ jobs:
           REPO_URL=$(terraform output -raw backend_ecr_repository_url)
           aws lambda update-function-code --function-name "$FUNCTION" --image-uri "$REPO_URL:$IMAGE_TAG" >/dev/null
           aws lambda wait function-updated-v2 --function-name "$FUNCTION"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend for the deployed API
+        working-directory: frontend
+        run: |
+          export VITE_API_URL="$(terraform -chdir=../infra/live output -raw api_url)"
+          npm ci
+          npm run build
+      - name: Publish frontend
+        working-directory: frontend
+        run: |
+          BUCKET=$(terraform -chdir=../infra/live output -raw frontend_bucket_name)
+          DISTRIBUTION=$(terraform -chdir=../infra/live output -raw frontend_distribution_id)
+          # Keep prior hashed files so open tabs survive a release; publish entrypoint last.
+          aws s3 sync dist/ "s3://$BUCKET/" --exclude "index.html" --cache-control "public,max-age=31536000,immutable" --only-show-errors
+          aws s3 cp dist/index.html "s3://$BUCKET/index.html" --cache-control "no-cache" --content-type "text/html" --only-show-errors
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION" --paths "/" "/index.html" >/dev/null

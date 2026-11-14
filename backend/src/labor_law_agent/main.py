@@ -42,6 +42,7 @@ class AgentSettings(BaseModel):
     chat_max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS
     pinecone_index_name: str
     pinecone_api_key_secret_id: str
+    frontend_origin: str = ""
     usage_table_name: str
     ip_daily_question_quota: int = DEFAULT_IP_DAILY_QUESTION_QUOTA
     global_daily_token_budget: int = DEFAULT_GLOBAL_DAILY_TOKEN_BUDGET
@@ -76,7 +77,10 @@ def build_app(settings: AgentSettings) -> FastAPI:
         ),
         boto3.client("dynamodb"),
     )
-    return create_app(AgentChatResponder(agent), guard)
+    return create_app(
+        AgentChatResponder(agent), guard,
+        cors_origins=(settings.frontend_origin,) if settings.frontend_origin else (),
+    )
 
 
 app = build_app(AgentSettings.from_env())
