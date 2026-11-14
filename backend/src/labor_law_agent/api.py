@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -94,9 +95,23 @@ async def _message_stream(
     yield SSE_DONE
 
 
-def create_app(responder: ChatResponder, guard: UsageGuard | None = None) -> FastAPI:
+def create_app(
+    responder: ChatResponder,
+    guard: UsageGuard | None = None,
+    cors_origins: tuple[str, ...] = (),
+) -> FastAPI:
     """``guard=None`` disables quotas (stub app, tests that don't exercise them)."""
     app = FastAPI(title="Saudi Labor Law RAG Agent")
+    # FastAPI 0.162: explicit origins, no credentials; expose the follow-up thread header.
+    # https://fastapi.tiangolo.com/tutorial/cors/
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(cors_origins),
+            allow_methods=["POST"],
+            allow_headers=["Content-Type"],
+            expose_headers=["X-Thread-Id"],
+        )
 
     @app.get("/health")
     async def health() -> HealthResponse:
@@ -130,4 +145,7 @@ def create_app(responder: ChatResponder, guard: UsageGuard | None = None) -> Fas
     return app
 
 
-app = create_app(StubChatResponder())
+app = create_app(
+    StubChatResponder(),
+    cors_origins=("http://localhost:5173", "http://127.0.0.1:5173"),
+)

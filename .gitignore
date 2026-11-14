@@ -11,3 +11,8 @@ __pycache__/
 *.tfstate.*
 *.tfplan
 crash.log
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.env.local
