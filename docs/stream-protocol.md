@@ -19,7 +19,7 @@ Invalid input → `422` (FastAPI validation body), no stream.
 
 - `200`, `Content-Type: text/event-stream`
 - `x-vercel-ai-ui-message-stream: v1`
-- `X-Thread-Id`: the request's `thread_id`, or a new one when it was omitted. Send it back on follow-ups.
+- `X-Thread-Id`: the request's `thread_id`, or a new one when it was omitted. Send it back on follow-ups; cross-turn memory remains #7, so current requests must be self-contained.
 
 Each event is `data: <json>\n\n`. The stream ends with `data: [DONE]`.
 

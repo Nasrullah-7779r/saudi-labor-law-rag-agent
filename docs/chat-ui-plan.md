@@ -11,6 +11,11 @@ Use AI SDK 7.0.173 / React adapter 4.0.177: `DefaultChatTransport`, request tran
 from latest user text to `{message, thread_id?}`, fetch middleware reads `X-Thread-Id`
 and translates typed quota rejections. Custom typed data parts retain the existing
 backend wire contract. New conversation remounts client state and discards the thread.
+Cross-turn conversation memory remains #7; the current backend receives only the latest
+message. Calculator clarification must request the complete wage, start date, end date
+and termination reason together in one reply, including already shared details. Dates
+are Gregorian ISO dates; the same reply should confirm Gregorian service periods if
+the contract or work regulations specify them (otherwise Hijri is the default).
 API calls go directly to API Gateway: routing through CloudFront would change the
 trusted source IP seen by the existing quota guard. CORS permits only the frontend
 origin in production and exposes the thread header. Local stub permits localhost Vite.
