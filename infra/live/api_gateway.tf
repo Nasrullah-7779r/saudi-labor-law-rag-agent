@@ -87,4 +87,9 @@ resource "aws_api_gateway_gateway_response" "cors_errors" {
   response_parameters = {
     "gatewayresponse.header.Access-Control-Allow-Origin" = "'https://${aws_cloudfront_distribution.frontend.domain_name}'"
   }
+  # API Gateway re-adds this default template when it is omitted, so leaving it out causes
+  # a perpetual diff that flips aws_api_gateway_deployment.chat's redeployment hash mid-apply.
+  response_templates = {
+    "application/json" = "{\"message\":$context.error.messageString}"
+  }
 }
