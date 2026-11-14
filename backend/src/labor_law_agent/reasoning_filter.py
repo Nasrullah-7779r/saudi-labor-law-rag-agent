@@ -1,7 +1,11 @@
 """Removes ``<thinking>…</thinking>`` blocks from streamed model text. Pure, no I/O.
 
-Some Bedrock models (Amazon Nova with tool use) write their reasoning inline as
-``<thinking>…</thinking>`` before answering. It is not meant for end users. Tags can be split
+Amazon Nova (v1) uses chain-of-thought for tool calling by default and returns it in the
+assistant text inside ``<thinking>`` tags, possibly several blocks per response; the only
+documented way to suppress it is ``toolChoice`` ``any``/``tool``, which forces a tool call on
+every turn and so can't be used by an agent that must also answer
+(https://docs.aws.amazon.com/nova/latest/userguide/tool-use-invocation.html). Bedrock offers no
+option to strip it, so it is removed here; it is not meant for end users. Tags can be split
 across stream chunks, so text that could be the start of a tag is held back until the next
 chunk shows whether it is one.
 """
