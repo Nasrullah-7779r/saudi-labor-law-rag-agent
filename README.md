@@ -108,7 +108,12 @@ origin through `FRONTEND_ORIGIN` (production is set from the CloudFront domain).
 
 The page supports Arabic/English layout, streaming, expandable article excerpts,
 calculator/search status, daily quota and typed limit messages. New conversation
-resets the client thread; server-side follow-up memory depends on the memory ticket.
+resets the client thread. Cross-turn conversation memory remains open in #7: each request
+currently contains only the latest message. For the calculator, send the complete last
+monthly wage in SAR, start date, end date and termination reason together in one message,
+including previously shared values. Use Gregorian ISO dates (YYYY-MM-DD); also state if
+your contract or work regulations specify Gregorian service periods instead of the
+default Hijri calendar.
 The UI keeps a question allowance across new conversations; the stub reports zero
 because quotas are off, while production reports the real remaining allowance.
 
