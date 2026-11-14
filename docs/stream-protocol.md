@@ -73,6 +73,9 @@ Typed custom parts mirror the Python models in `frontend/src/types.ts`.
 
 The browser calls API Gateway directly, so the trusted source-IP quota remains
 per viewer. FastAPI CORS allows only the configured frontend origin in production
-and exposes `X-Thread-Id`; the stub permits the two local Vite origins. Limits use
+and exposes `X-Thread-Id`; the stub permits the two local Vite origins.
+REST `AWS_PROXY` streaming requires this backend CORS ownership. Gateway Responses
+separately add the same origin for API Gateway-owned 4xx/5xx errors (such as stage
+throttling), so browsers can read their native status codes. Limits use
 UTC days. A usage event with `remaining_questions: 0` means zero in the current
 contract; stub quotas are disabled and also return zero (see README).
