@@ -29,7 +29,7 @@ Each event is `data: <json>\n\n`. The stream ends with `data: [DONE]`.
 | `data-tool-status` | `data: {tool: "search_labor_law" \| "calc_end_of_service", state: "running" \| "done"}` | around each tool call |
 | `text-start` / `text-delta` / `text-end` | `id`, `delta` (delta only) | answer text; concatenate the deltas that share an `id`. One text part per model turn, so text written before a tool call gets its own `id` |
 | `data-citations` | `data: {citations: [{article_no: int, excerpt: str}]}` | after the text; retrieved articles the answer names ("Article N" / "المادة N"), best match first. Omitted when none |
-| `data-usage` | `data: {input_tokens, output_tokens, remaining_questions}` | before `finish`; tokens summed over the turn's model calls. `remaining_questions` is `0` until the usage guard (#6) |
+| `data-usage` | `data: {input_tokens, output_tokens, remaining_questions}` | before `finish`; tokens summed over the turn's model calls. `remaining_questions`: questions left today for the caller's IP (`0` when quotas are off) |
 | `error` | `errorText` | a failure after streaming began (the status is already 200) |
 | `finish` | — | last JSON event, also after `error` |
 
@@ -49,4 +49,15 @@ data: {"type":"finish"}
 data: [DONE]
 ```
 
-Quota rejections (`429` with `ip_quota` | `global_budget`) arrive with the usage-guard ticket.
+## Quota rejections
+
+Checked before any model call. Over a limit → `429`, JSON, no stream:
+
+```json
+{ "error": "ip_quota" }
+```
+
+- `ip_quota`: the caller's IP (API Gateway `requestContext.identity.sourceIp`; `X-Forwarded-For` is ignored) used its daily questions.
+- `global_budget`: the demo's daily token budget is spent. Soft cap: usage is recorded after each turn, so concurrent turns can overshoot it.
+
+Days are UTC.

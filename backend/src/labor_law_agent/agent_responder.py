@@ -127,7 +127,7 @@ class AgentChatResponder:
                     ]
                 )
             )
-        # remaining_questions is filled in by the usage guard (#6); 0 until then.
+        # remaining_questions is filled in by the HTTP layer from the usage guard.
         yield UsagePart(
             data=Usage(
                 input_tokens=input_tokens, output_tokens=output_tokens, remaining_questions=0
