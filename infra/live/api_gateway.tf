@@ -50,6 +50,7 @@ resource "aws_api_gateway_deployment" "chat" {
       aws_api_gateway_resource.proxy,
       aws_api_gateway_method.proxy,
       aws_api_gateway_integration.proxy,
+      aws_api_gateway_gateway_response.cors_errors,
     ]))
   }
 
@@ -72,5 +73,18 @@ resource "aws_api_gateway_method_settings" "prod_all" {
   settings {
     throttling_rate_limit  = var.api_throttle_rate_limit
     throttling_burst_limit = var.api_throttle_burst_limit
+  }
+}
+
+# AWS_PROXY streaming requires the backend to own CORS on its responses. These
+# cover errors owned by API Gateway instead (e.g. stage throttling), so browsers
+# can read their status and show a friendly message. Keep native HTTP statuses.
+# https://docs.aws.amazon.com/apigateway/latest/developerguide/how-to-cors.html
+resource "aws_api_gateway_gateway_response" "cors_errors" {
+  for_each      = toset(["DEFAULT_4XX", "DEFAULT_5XX"])
+  rest_api_id   = aws_api_gateway_rest_api.chat.id
+  response_type = each.value
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin" = "'https://${aws_cloudfront_distribution.frontend.domain_name}'"
   }
 }

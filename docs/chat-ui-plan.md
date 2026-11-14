@@ -14,6 +14,11 @@ backend wire contract. New conversation remounts client state and discards the t
 API calls go directly to API Gateway: routing through CloudFront would change the
 trusted source IP seen by the existing quota guard. CORS permits only the frontend
 origin in production and exposes the thread header. Local stub permits localhost Vite.
+The current REST `AWS_PROXY` streaming integration requires backend CORS on backend
+responses; HTTP API-style centralized CORS is unavailable here. Gateway Responses
+add the same allowed origin to API Gateway-owned 4xx/5xx errors (including stage
+throttling), preserving status codes so browser error handling remains readable.
+This is split response ownership, not duplicate CORS middleware.
 
 Design: public legal reference desk, not a dashboard. Deep green #134f46 sidebar,
 ink #17332f, mist #f4f8f8, white #ffffff, line #c3d8d0, quiet blue-green #1a8e9a focus.
@@ -33,6 +38,7 @@ No new Lambda or runtime IAM permission needed.
 
 - [AI SDK transport](https://ai-sdk.dev/docs/ai-sdk-ui/transport), [useChat](https://ai-sdk.dev/docs/reference/ai-sdk-ui/use-chat), [custom data](https://ai-sdk.dev/docs/ai-sdk-ui/streaming-data), [SSE v1](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol).
 - React 19.3 [createRoot](https://react.dev/reference/react-dom/client/createRoot) and hooks reference; Vite 8 [guide](https://vite.dev/guide/) and [build-time environment](https://vite.dev/guide/env-and-mode). Node >=22.12; CI Node 24.
+- AWS [REST proxy CORS](https://docs.aws.amazon.com/apigateway/latest/developerguide/how-to-cors.html), [streaming constraints](https://docs.aws.amazon.com/apigateway/latest/developerguide/response-transfer-mode.html), provider 6.x [Gateway Response schema](https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/v6.0.0/website/docs/r/api_gateway_gateway_response.html.markdown).
 - FastAPI 0.162 [CORSMiddleware](https://fastapi.tiangolo.com/tutorial/cors/) (`allow_origins`, methods, headers, `expose_headers`).
 - Terraform AWS provider 6.x: [distribution](https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/v6.0.0/website/docs/r/cloudfront_distribution.html.markdown), [OAC](https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/v6.0.0/website/docs/r/cloudfront_origin_access_control.html.markdown), S3 bucket/public-access/ownership/policy and response-headers resources in the same official versioned docs.
 - AWS [OAC bucket policy](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html), CLI [sync](https://docs.aws.amazon.com/cli/latest/reference/s3/sync.html), [invalidation](https://docs.aws.amazon.com/cli/latest/reference/cloudfront/create-invalidation.html).
