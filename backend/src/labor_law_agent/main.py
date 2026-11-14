@@ -1,7 +1,8 @@
 """Production app: wires the agent to Bedrock and Pinecone from environment settings.
 
 Env (set by Terraform): ``CHAT_MODEL_ID``, ``CHAT_MODEL_PROVIDER``, ``CHAT_MAX_OUTPUT_TOKENS``,
-``PINECONE_INDEX_NAME``, ``PINECONE_API_KEY_SECRET_ID``. AWS access uses the Lambda role.
+``PINECONE_INDEX_NAME``, ``PINECONE_API_KEY_SECRET_ID``, ``USAGE_TABLE_NAME``,
+``IP_DAILY_QUESTION_QUOTA``, ``GLOBAL_DAILY_TOKEN_BUDGET``. AWS access uses the Lambda role.
 
 Docs: ``init_chat_model(model, model_provider="bedrock_converse", max_tokens=...)``
 (https://docs.langchain.com/oss/python/langchain/models); ``BedrockEmbeddings`` embeds queries
@@ -26,10 +27,13 @@ from labor_law_agent.agent_responder import AgentChatResponder
 from labor_law_agent.api import create_app
 from labor_law_agent.ingest.embeddings import COHERE_MULTILINGUAL_MODEL_ID
 from labor_law_agent.retrieval import PineconeLawRetriever
+from labor_law_agent.usage_guard import DynamoUsageGuard, UsageLimits
 
 DEFAULT_CHAT_MODEL_ID = "us.amazon.nova-lite-v1:0"  # keep in sync with infra chat_model_id
 DEFAULT_CHAT_MODEL_PROVIDER = "bedrock_converse"
 DEFAULT_MAX_OUTPUT_TOKENS = 1024
+DEFAULT_IP_DAILY_QUESTION_QUOTA = 20  # keep in sync with infra ip_daily_question_quota
+DEFAULT_GLOBAL_DAILY_TOKEN_BUDGET = 2_000_000  # keep in sync with infra global_daily_token_budget
 
 
 class AgentSettings(BaseModel):
@@ -38,6 +42,9 @@ class AgentSettings(BaseModel):
     chat_max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS
     pinecone_index_name: str
     pinecone_api_key_secret_id: str
+    usage_table_name: str
+    ip_daily_question_quota: int = DEFAULT_IP_DAILY_QUESTION_QUOTA
+    global_daily_token_budget: int = DEFAULT_GLOBAL_DAILY_TOKEN_BUDGET
 
     @classmethod
     def from_env(cls) -> AgentSettings:
@@ -61,7 +68,15 @@ def build_app(settings: AgentSettings) -> FastAPI:
         max_tokens=settings.chat_max_output_tokens,
     )
     agent = build_agent(model, PineconeLawRetriever(vector_store))
-    return create_app(AgentChatResponder(agent))
+    guard = DynamoUsageGuard(
+        settings.usage_table_name,
+        UsageLimits(
+            ip_daily_question_quota=settings.ip_daily_question_quota,
+            global_daily_token_budget=settings.global_daily_token_budget,
+        ),
+        boto3.client("dynamodb"),
+    )
+    return create_app(AgentChatResponder(agent), guard)
 
 
 app = build_app(AgentSettings.from_env())

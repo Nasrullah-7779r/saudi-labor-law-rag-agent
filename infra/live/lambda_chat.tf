@@ -49,6 +49,13 @@ data "aws_iam_policy_document" "chat_lambda" {
       aws_secretsmanager_secret.pinecone_api_key.arn, # Pinecone API key
     ]
   }
+
+  statement {
+    actions = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+    resources = [
+      aws_dynamodb_table.usage.arn, # usage-guard counters
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "chat_lambda" {
@@ -76,6 +83,9 @@ resource "aws_lambda_function" "chat" {
       CHAT_MAX_OUTPUT_TOKENS       = tostring(var.chat_max_output_tokens)
       PINECONE_INDEX_NAME          = var.pinecone_index_name
       PINECONE_API_KEY_SECRET_ID   = aws_secretsmanager_secret.pinecone_api_key.name
+      USAGE_TABLE_NAME             = aws_dynamodb_table.usage.name
+      IP_DAILY_QUESTION_QUOTA      = tostring(var.ip_daily_question_quota)
+      GLOBAL_DAILY_TOKEN_BUDGET    = tostring(var.global_daily_token_budget)
     }
   }
 

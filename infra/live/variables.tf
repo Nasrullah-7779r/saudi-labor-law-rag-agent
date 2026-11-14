@@ -41,3 +41,15 @@ variable "pinecone_index_name" {
   type        = string
   default     = "saudi-labor-law"
 }
+
+variable "ip_daily_question_quota" {
+  description = "Questions per source IP per UTC day."
+  type        = number
+  default     = 20
+}
+
+variable "global_daily_token_budget" {
+  description = "Soft cap on model tokens (input + output) across the demo per UTC day."
+  type        = number
+  default     = 2000000
+}

@@ -15,7 +15,7 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from labor_law_agent.chat import ChatTurn
 from labor_law_agent.ingest.parser import Article
 from labor_law_agent.retrieval import RetrievedArticle
-from labor_law_agent.stream_events import StreamPart, TextStartPart
+from labor_law_agent.stream_events import StreamPart, TextStartPart, Usage, UsagePart
 
 _TOKEN = re.compile(r"\w+")
 
@@ -49,6 +49,21 @@ class FailingChatResponder:
     async def respond(self, turn: ChatTurn) -> AsyncIterator[StreamPart]:
         yield TextStartPart(id="text-1")
         raise RuntimeError("boom")
+
+
+class RecordingChatResponder:
+    """ChatResponder fake: records each turn it is asked to answer, emits one usage part."""
+
+    def __init__(self, input_tokens: int = 10, output_tokens: int = 5) -> None:
+        self.turns: list[ChatTurn] = []
+        self._usage = Usage(
+            input_tokens=input_tokens, output_tokens=output_tokens, remaining_questions=0
+        )
+
+    async def respond(self, turn: ChatTurn) -> AsyncIterator[StreamPart]:
+        self.turns.append(turn)
+        yield TextStartPart(id="text-1")
+        yield UsagePart(data=self._usage.model_copy())
 
 
 class ScriptedChatModel(BaseChatModel):
