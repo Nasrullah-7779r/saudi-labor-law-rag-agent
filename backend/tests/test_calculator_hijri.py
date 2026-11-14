@@ -120,3 +120,40 @@ def test_full_amount_for_exactly_seven_hijri_years():
     assert result.service_years == Decimal("7.00")
     assert result.amount == Decimal("45000.00")
     assert result.applied_articles == [84]
+
+
+def test_exact_anniversary_in_last_supported_hijri_year_needs_no_next_year() -> None:
+    result = calculate_end_of_service(
+        EndOfServiceRequest(
+            last_monthly_wage=WAGE,
+            start_date=_h(1499, 1, 1),
+            end_date=_h(1500, 1, 1),
+            reason=R.EMPLOYER_TERMINATION,
+        )
+    )
+    assert result.service_years == Decimal("1.00")
+    assert result.amount == Decimal("5000.00")
+
+
+def test_same_day_on_last_supported_hijri_date_is_zero() -> None:
+    last_supported = date(2077, 11, 16)
+    result = calculate_end_of_service(
+        EndOfServiceRequest(
+            last_monthly_wage=WAGE,
+            start_date=last_supported,
+            end_date=last_supported,
+            reason=R.EMPLOYER_TERMINATION,
+        )
+    )
+    assert result.service_years == Decimal("0.00")
+    assert result.amount == Decimal("0.00")
+
+
+def test_partial_last_hijri_service_year_rejected_before_calculation() -> None:
+    with pytest.raises(ValidationError, match="Hijri|range|support"):
+        EndOfServiceRequest(
+            last_monthly_wage=WAGE,
+            start_date=_h(1499, 1, 1),
+            end_date=_h(1500, 1, 1) + timedelta(days=1),
+            reason=R.EMPLOYER_TERMINATION,
+        )
