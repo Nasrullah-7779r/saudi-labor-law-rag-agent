@@ -27,7 +27,7 @@ from labor_law_agent.api import create_app
 from labor_law_agent.ingest.embeddings import COHERE_MULTILINGUAL_MODEL_ID
 from labor_law_agent.retrieval import PineconeLawRetriever
 
-DEFAULT_CHAT_MODEL_ID = "us.anthropic.claude-haiku-5-5"
+DEFAULT_CHAT_MODEL_ID = "us.amazon.nova-lite-v1:0"  # keep in sync with infra chat_model_id
 DEFAULT_CHAT_MODEL_PROVIDER = "bedrock_converse"
 DEFAULT_MAX_OUTPUT_TOKENS = 1024
 

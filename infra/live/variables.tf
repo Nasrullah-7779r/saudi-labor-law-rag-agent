@@ -25,7 +25,9 @@ variable "api_throttle_burst_limit" {
 variable "chat_model_id" {
   description = "Bedrock cross-Region inference profile id of the chat model."
   type        = string
-  default     = "us.anthropic.claude-haiku-5-5"
+  # Temporary: Nova Lite needs no Anthropic use-case approval. Switch back to
+  # us.anthropic.claude-haiku-5-5 once Bedrock grants Anthropic access to the account.
+  default = "us.amazon.nova-lite-v1:0"
 }
 
 variable "chat_max_output_tokens" {
