@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 from fakes import InMemoryLawRetriever, ScriptedChatModel
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessage
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.outputs import ChatGenerationChunk
+from pydantic import Field
 from test_chat_api import _events, _of_type, _types
 
 from labor_law_agent.agent import SEARCH_TOOL_NAME, build_agent
 from labor_law_agent.agent_responder import AgentChatResponder
 from labor_law_agent.api import create_app
+from labor_law_agent.calculator import EndOfServiceResult
 from labor_law_agent.ingest.parser import parse_articles
 from labor_law_agent.retrieval import RetrievedArticle
 
@@ -279,3 +285,114 @@ def test_agent_visible_text_before_tool_call_survives_thinking_strip() -> None:
     _assert_no_empty_text_parts(events)
     assert len(_of_type(events, "text-start")) == 2
     assert _text(events) == "Let me check. " + ANSWER
+
+
+class _ToolResultRecordingModel(ScriptedChatModel):
+    """Capture the public model input so calculator output cannot be a scripted echo."""
+
+    received_tool_results: list[ToolMessage] = Field(default_factory=list)
+
+    def _stream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> Iterator[ChatGenerationChunk]:
+        self.received_tool_results.extend(m for m in messages if isinstance(m, ToolMessage))
+        yield from super()._stream(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+def test_agent_calculator_returns_award_breakdown_and_articles_to_model() -> None:
+    model = _ToolResultRecordingModel(
+        script=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "calc_end_of_service",
+                        "args": {
+                            "last_monthly_wage": "10000",
+                            "start_date": "2010-01-01",
+                            "end_date": "2015-01-01",
+                            "reason": "resignation",
+                            "calendar": "gregorian",
+                        },
+                        "id": "award-1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            _answer_turn("Your award is SAR 8,333.33 (Articles 84 and 85)."),
+        ]
+    )
+    agent = build_agent(model, InMemoryLawRetriever(ARTICLES))
+    client = TestClient(create_app(AgentChatResponder(agent)))
+    response = client.post(
+        "/chat",
+        json={
+            "message": (
+                "Calculate my award: last monthly wage SAR 10000, "
+                "2010-01-01 to 2015-01-01, resignation, Gregorian contract."
+            )
+        },
+    )
+    assert response.status_code == 200
+    events = _events(response.text)
+    assert _of_type(events, "error") == []
+    assert [event["data"] for event in _of_type(events, "data-tool-status")] == [
+        {"tool": "calc_end_of_service", "state": "running"},
+        {"tool": "calc_end_of_service", "state": "done"},
+    ]
+    assert len(model.received_tool_results) == 1
+    tool_result = model.received_tool_results[0]
+    assert tool_result.name == "calc_end_of_service"
+    assert tool_result.status == "success"
+    assert isinstance(tool_result.content, str)
+    result = EndOfServiceResult.model_validate_json(tool_result.content)
+    # Five years at half a month per year = 25000; Art. 85 pays one third at exactly 5y.
+    assert result.amount == Decimal("8333.33")
+    assert result.full_award == Decimal("25000.00")
+    assert result.applied_articles == [84, 85]
+    assert len(result.breakdown) == 1
+    assert result.breakdown[0].years == Decimal("5.00")
+    assert result.breakdown[0].months_of_wage_per_year == Decimal("0.5")
+    assert result.breakdown[0].amount == Decimal("25000.00")
+    assert _text(events) == "Your award is SAR 8,333.33 (Articles 84 and 85)."
+
+
+def test_agent_incomplete_calculator_input_returns_validation_for_clarification() -> None:
+    clarification = "What are your employment start date, end date and termination reason?"
+    model = _ToolResultRecordingModel(
+        script=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "calc_end_of_service",
+                        "args": {"last_monthly_wage": "10000"},
+                        "id": "incomplete-award-1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            _answer_turn(clarification),
+        ]
+    )
+    agent = build_agent(model, InMemoryLawRetriever(ARTICLES))
+    client = TestClient(create_app(AgentChatResponder(agent)))
+    response = client.post(
+        "/chat", json={"message": "Calculate my end-of-service award; my wage is SAR 10000."}
+    )
+    assert response.status_code == 200
+    events = _events(response.text)
+    assert _of_type(events, "error") == []
+    assert len(model.received_tool_results) == 1
+    rejection = model.received_tool_results[0]
+    assert rejection.name == "calc_end_of_service"
+    assert rejection.status == "error"
+    assert isinstance(rejection.content, str)
+    for missing_input in ("start_date", "end_date", "reason"):
+        assert missing_input in rejection.content
+    assert _text(events) == clarification
+    assert _types(events)[-2:] == ["finish", "[DONE]"]

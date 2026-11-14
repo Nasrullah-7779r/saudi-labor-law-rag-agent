@@ -2,6 +2,9 @@
 
 Pure function, no I/O.
 
+Source, checked 2026-11-14: BOE consolidated Arabic text, Articles 10, 80, 81, 84, 85, 87:
+https://laws.boe.gov.sa/BoeLaws/Laws/LawDetails/08381293-6388-48e2-8ad2-a9a700f2aa94/1
+
 Rules encoded, checked against the BOE consolidated Arabic text (laws.boe.gov.sa, Labor Law
 M/51 1426H as amended through 1446H; printed 1448/05/30H; Articles 81, 84, 85, 87 show no
 amendment, Art. 80 is amended and was read in its current wording):
@@ -28,7 +31,9 @@ to the month's last day); the remaining days are a fraction of the service year 
 Hijri conversion uses the Umm al-Qura calendar via ``hijridate`` 2.6
 (https://pypi.org/project/hijridate/2.6.0/: ``Gregorian.fromdate(d).to_hijri()``,
 ``Hijri.month_length()``, ``Hijri.to_gregorian()``; supported range 1343-1500 AH,
-1924-08-01 to 2077-11-16 CE).
+1924-08-01 to 2077-11-16 CE). Partial service also needs the next service anniversary
+within the supported calendar range; requests that need a later anniversary are rejected.
+API/range docs: https://hijridate.readthedocs.io/en/stable/api.html .
 """
 
 from __future__ import annotations
@@ -91,6 +96,15 @@ class EndOfServiceRequest(BaseModel):
                 f"Hijri calculation supports dates from {UMM_AL_QURA_FIRST_DATE} "
                 f"to {UMM_AL_QURA_LAST_DATE}"
             )
+        # A partial year needs its next anniversary as the denominator. Reject an
+        # unrepresentable anniversary here so tools return a validation error, not a crash.
+        try:
+            service_years(self.start_date, self.end_date, self.calendar)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError(
+                f"service period needs an anniversary outside the supported "
+                f"{self.calendar.value} calendar date range"
+            ) from exc
         return self
 
 
@@ -147,6 +161,8 @@ def service_years(
     if anniversary(start, whole) > end:
         whole -= 1
     last = anniversary(start, whole)
+    if last == end:
+        return Decimal(whole)
     next_ = anniversary(start, whole + 1)
     partial = Decimal((end - last).days) / Decimal((next_ - last).days)
     return Decimal(whole) + partial
