@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -212,3 +213,69 @@ def test_agent_retriever_failure_is_reported_in_band_without_leaking_message() -
     assert "sk-secret" not in errors[0]["errorText"]
     assert "exploded" not in errors[0]["errorText"]
     assert _types(events)[-2:] == ["finish", "[DONE]"]
+
+
+def _assert_no_empty_text_parts(events: list[Any]) -> None:
+    """Every text-start is followed by at least one delta before its text-end; no empty deltas."""
+    open_id: str | None = None
+    deltas_in_part = 0
+    for e in events:
+        if not isinstance(e, dict):
+            continue
+        if e["type"] == "text-start":
+            assert open_id is None
+            open_id, deltas_in_part = e["id"], 0
+        elif e["type"] == "text-delta":
+            assert e["id"] == open_id
+            assert e["delta"] != ""
+            deltas_in_part += 1
+        elif e["type"] == "text-end":
+            assert e["id"] == open_id
+            assert deltas_in_part > 0
+            open_id = None
+    assert open_id is None
+
+
+def test_agent_thinking_blocks_are_stripped_from_stream_and_citations_use_visible_text() -> None:
+    events = _chat(
+        [
+            _tool_turn(
+                "الأجر الشهري", content="<thinking>I should search the law first.</thinking>"
+            ),
+            _answer_turn(
+                "<thinking>Article 7 maybe? No, Article 4.</thinking>\n" + ANSWER
+            ),
+        ]
+    )
+    assert "thinking" not in json.dumps(events)
+    _assert_no_empty_text_parts(events)
+    # the tool turn had only thinking: no text part for it, just the answer's one
+    assert len(_of_type(events, "text-start")) == 1
+    assert len(_of_type(events, "text-end")) == 1
+    assert _text(events) == ANSWER
+    items = _of_type(events, "data-citations")[0]["data"]["citations"]
+    assert [c["article_no"] for c in items] == [4]
+
+
+def test_agent_thinking_only_answer_emits_no_text_parts() -> None:
+    events = _chat([_answer_turn("<thinking>nothing to say</thinking>")])
+    assert "thinking" not in json.dumps(events)
+    assert _of_type(events, "text-start") == []
+    assert _of_type(events, "text-end") == []
+    assert _of_type(events, "text-delta") == []
+    assert _types(events)[-2:] == ["finish", "[DONE]"]
+
+
+def test_agent_visible_text_before_tool_call_survives_thinking_strip() -> None:
+    events = _chat(
+        [
+            _tool_turn(
+                "الأجر الشهري", content="<thinking>plan</thinking>\nLet me check. "
+            ),
+            _answer_turn("<thinking>done</thinking>" + ANSWER),
+        ]
+    )
+    assert "thinking" not in json.dumps(events)
+    _assert_no_empty_text_parts(events)
+    assert len(_of_type(events, "text-start")) == 2
+    assert _text(events) == "Let me check. " + ANSWER

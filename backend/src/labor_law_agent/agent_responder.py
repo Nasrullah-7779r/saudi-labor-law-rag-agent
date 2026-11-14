@@ -18,6 +18,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from labor_law_agent.agent import SEARCH_TOOL_NAME
 from labor_law_agent.chat import ChatTurn
+from labor_law_agent.reasoning_filter import ThinkingFilter
 from labor_law_agent.retrieval import RetrievedArticle
 from labor_law_agent.stream_events import (
     Citation,
@@ -63,6 +64,21 @@ class AgentChatResponder:
         cited: dict[int, RetrievedArticle] = {}  # best-scoring hit per article
         input_tokens = output_tokens = 0
         answer: list[str] = []
+        thinking = ThinkingFilter()  # one per model turn
+
+        def open_or_continue_text(visible: str) -> list[StreamPart]:
+            """Parts for visible text; a text part is opened only once there is text."""
+            nonlocal text_id, text_count
+            if not visible:
+                return []
+            parts: list[StreamPart] = []
+            if text_id is None:
+                text_count += 1
+                text_id = f"text-{text_count}"
+                parts.append(TextStartPart(id=text_id))
+            answer.append(visible)
+            parts.append(TextDeltaPart(id=text_id, delta=visible))
+            return parts
 
         async for chunk in self._agent.astream(
             {"messages": [{"role": "user", "content": turn.message}]},
@@ -77,17 +93,16 @@ class AgentChatResponder:
                     and metadata.get("langgraph_node") == MODEL_NODE
                     and token.text
                 ):
-                    if text_id is None:
-                        text_count += 1
-                        text_id = f"text-{text_count}"
-                        yield TextStartPart(id=text_id)
-                    answer.append(token.text)
-                    yield TextDeltaPart(id=text_id, delta=token.text)
+                    for part in open_or_continue_text(thinking.feed(token.text)):
+                        yield part
                 continue
 
             for node, update in (chunk["data"] or {}).items():
                 for message in cast(dict[str, Any], update or {}).get("messages", []):
                     if node == MODEL_NODE and isinstance(message, AIMessage):
+                        for part in open_or_continue_text(thinking.flush()):
+                            yield part
+                        thinking = ThinkingFilter()
                         if text_id is not None:
                             yield TextEndPart(id=text_id)
                             text_id = None
@@ -112,6 +127,8 @@ class AgentChatResponder:
                                 if best is None or hit.score > best.score:
                                     cited[hit.article_no] = hit
 
+        for part in open_or_continue_text(thinking.flush()):
+            yield part
         if text_id is not None:
             yield TextEndPart(id=text_id)
         # Cite only retrieved articles the answer actually names, so chips match the text.
