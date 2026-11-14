@@ -61,3 +61,18 @@ Checked before any model call. Over a limit → `429`, JSON, no stream:
 - `global_budget`: the demo's daily token budget is spent. Soft cap: usage is recorded after each turn, so concurrent turns can overshoot it.
 
 Days are UTC.
+
+## Frontend adapter
+
+The Vite/React frontend pins AI SDK 7 (`@ai-sdk/react` 4). Its documented
+`DefaultChatTransport.prepareSendMessagesRequest` sends the latest user text as
+`message` instead of the SDK's default `messages` array. Fetch middleware retains
+`X-Thread-Id` for follow-ups and maps typed JSON 429 responses to friendly copy.
+`useChat<LawMessage>` consumes this existing SSE v1 stream without an encoder change.
+Typed custom parts mirror the Python models in `frontend/src/types.ts`.
+
+The browser calls API Gateway directly, so the trusted source-IP quota remains
+per viewer. FastAPI CORS allows only the configured frontend origin in production
+and exposes `X-Thread-Id`; the stub permits the two local Vite origins. Limits use
+UTC days. A usage event with `remaining_questions: 0` means zero in the current
+contract; stub quotas are disabled and also return zero (see README).

@@ -1,0 +1,86 @@
+export const copy = {
+  en: {
+    title: "Saudi Labor Law",
+    subtitle: "Know the article. Understand your rights.",
+    intro: "What does the law say?",
+    description:
+      "Ask a question about working in Saudi Arabia. Explore the official Arabic law, with the articles behind each answer.",
+    newChat: "New conversation",
+    you: "You",
+    assistant: "Labor Law assistant",
+    placeholder: "Ask about leave, notice periods, or end-of-service pay…",
+    send: "Ask question",
+    stop: "Stop answer",
+    searching: "Looking up the law",
+    calculating: "Calculating your award",
+    thinking: "Preparing your answer",
+    sources: "Articles behind this answer",
+    article: "Article",
+    quota: "questions left today",
+    quotaUnknown: "Daily limit shown after your first answer",
+    reset: "Daily limits reset at 00:00 UTC.",
+    legal:
+      "For information, not legal advice. The Arabic text governs (Article 9).",
+    logging:
+      "Questions and answers are logged to improve quality. Please leave out personal or sensitive details.",
+    official: "Official Arabic source",
+    demo: "Independent public demo",
+    inputLabel: "Your question",
+    starters: [
+      "How much annual leave am I entitled to?",
+      "What notice is required to end a contract?",
+      "Help me calculate my end-of-service award.",
+    ],
+    ip_quota: "You’ve used today’s questions. Come back after 00:00 UTC.",
+    global_budget:
+      "The demo has reached its daily budget. Please come back after 00:00 UTC.",
+    throttled: "The service is busy. Wait a moment, then try again.",
+    invalid_input: "Keep your question between 1 and 2,000 characters.",
+    unavailable:
+      "We couldn’t complete your answer. Check your connection and try again.",
+    retry: "Try again",
+    characters: "characters",
+  },
+  ar: {
+    title: "نظام العمل السعودي",
+    subtitle: "اعرف المادة. افهم حقوقك.",
+    intro: "ماذا يقول النظام؟",
+    description:
+      "اسأل عن العمل في المملكة العربية السعودية، واستكشف النص العربي الرسمي والمواد التي يستند إليها كل جواب.",
+    newChat: "محادثة جديدة",
+    you: "أنت",
+    assistant: "مساعد نظام العمل",
+    placeholder: "اسأل عن الإجازات أو مهلة الإشعار أو مكافأة نهاية الخدمة…",
+    send: "اطرح سؤالك",
+    stop: "إيقاف الجواب",
+    searching: "جارٍ البحث في النظام",
+    calculating: "جارٍ حساب المكافأة",
+    thinking: "جارٍ إعداد الجواب",
+    sources: "المواد التي يستند إليها الجواب",
+    article: "المادة",
+    quota: "أسئلة متبقية اليوم",
+    quotaUnknown: "يظهر الحد اليومي بعد أول جواب",
+    reset: "تتجدد الحدود يومياً الساعة 00:00 بالتوقيت العالمي.",
+    legal:
+      "للمعلومات فقط، وليست استشارة قانونية. النص العربي هو المعتمد (المادة ٩).",
+    logging:
+      "تُسجّل الأسئلة والأجوبة لتحسين الجودة. تجنّب مشاركة المعلومات الشخصية أو الحساسة.",
+    official: "المصدر العربي الرسمي",
+    demo: "عرض مستقل متاح للجميع",
+    inputLabel: "سؤالك",
+    starters: [
+      "كم مدة الإجازة السنوية التي أستحقها؟",
+      "ما مهلة الإشعار لإنهاء عقد العمل؟",
+      "ساعدني في حساب مكافأة نهاية الخدمة.",
+    ],
+    ip_quota:
+      "استخدمت أسئلتك المتاحة اليوم. عُد بعد الساعة 00:00 بالتوقيت العالمي.",
+    global_budget:
+      "بلغ العرض ميزانيته اليومية. عُد بعد الساعة 00:00 بالتوقيت العالمي.",
+    throttled: "الخدمة مشغولة حالياً. انتظر قليلاً ثم حاول مجدداً.",
+    invalid_input: "يجب أن يتراوح طول السؤال بين حرف واحد و٢٠٠٠ حرف.",
+    unavailable: "تعذّر إكمال الجواب. تحقّق من الاتصال ثم حاول مجدداً.",
+    retry: "حاول مجدداً",
+    characters: "حرف",
+  },
+};

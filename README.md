@@ -86,3 +86,41 @@ terraform plan
 Known trade-offs (revisit once the live stack has real resources):
 - The deploy role has `AdministratorAccess`; scope it down. Protect `main` (required reviews + required `CI` checks), since any workflow on `main` can assume it.
 - Any same-repo PR can assume the read-only plan role. Fork PRs get no OIDC token, so their plan job fails.
+
+### Public chat UI
+
+`frontend/` is a Vite + React page using AI SDK UI's custom-backend SSE protocol.
+Requires Node 22.12+ (CI uses Node 24). For local development:
+
+```sh
+# Terminal 1, from backend/ — no AWS calls, stub answers and quotas disabled
+uv run uvicorn labor_law_agent.api:app --port 8000
+# Terminal 2, from frontend/
+npm ci
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. `VITE_API_URL` defaults to the local stub; set it
+in `frontend/.env.local` to a different API origin including its stage path.
+Production builds get this public URL from `terraform output -raw api_url` in CI;
+never put credentials in `VITE_*` variables. A non-local API must allow the UI's
+origin through `FRONTEND_ORIGIN` (production is set from the CloudFront domain).
+
+The page supports Arabic/English layout, streaming, expandable article excerpts,
+calculator/search status, daily quota and typed limit messages. New conversation
+resets the client thread; server-side follow-up memory depends on the memory ticket.
+The UI keeps a question allowance across new conversations; the stub reports zero
+because quotas are off, while production reports the real remaining allowance.
+
+On merge to main, both frontend and backend checks must pass before deployment.
+Terraform adds a private S3 bucket and CloudFront distribution with OAC; CI uploads
+hashed assets, publishes `index.html` last, then invalidates the entrypoint. Previous
+hashed assets are retained for open clients. `terraform -chdir=infra/live output -raw
+frontend_url` gives the live URL after deployment. Existing OIDC deploy/plan roles
+already cover these resources; no new credentials or Lambda are introduced.
+
+Frontend and Terraform verification is manual in v1. After deploy, smoke-test the
+live page at mobile width: streamed answer, Arabic direction, expandable citations,
+calculator status, quota and new conversation. Check both 429 reasons (daily IP
+quota and global budget), CORS preflight/thread header, and that direct S3 object
+access is denied. Architecture and verified dependency docs: `docs/chat-ui-plan.md`.
