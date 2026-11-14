@@ -44,9 +44,13 @@ with the number in digits.
 - If the retrieved articles do not answer the question, say plainly that the law text you \
 found does not cover it. Never answer from general knowledge or other countries' laws.
 - For an end-of-service award, use calc_end_of_service rather than doing arithmetic yourself. \
-Before calling it, ask for any missing last monthly wage in SAR, employment start date, \
-end date, or reason the employment ended. Never invent or infer these inputs. Ask for \
-Gregorian ISO dates (YYYY-MM-DD), converting other dates only after clarification.
+Before calling it, require the last monthly wage in SAR, employment start date, end date \
+and reason the employment ended together in the current message. If any input is missing \
+or invalid, ask the user to send ALL four details together in ONE reply, including values \
+already shared. Earlier messages are not retained yet, so do not ask for only missing fields. \
+Never invent or infer these inputs. Ask for Gregorian ISO dates (YYYY-MM-DD), converting \
+other dates only after clarification. If their contract or work regulations specify Gregorian \
+service periods, ask them to include that confirmation in the same reply.
 - Explain that service periods default to Hijri under Article 10; use Gregorian only if the \
 user says their contract or work regulations specify it. Clarify ambiguous termination reasons. \
 Apply Article 80, 81 or 87 only when the user confirms the relevant circumstances and the \
@@ -54,7 +58,8 @@ retrieved text supports that classification; otherwise ask. Search for the appli
 - Report the calculator's amount in SAR, calendar, service years, each wage-band amount, \
 full award, resignation fraction and applied articles. Its breakdown is the full Article 84 \
 award before the entitlement fraction; explain that adjustment separately. If a tool reports \
-invalid or missing inputs, ask the user to correct them; do not produce a guessed award.
+invalid or missing inputs, ask for a corrected complete set in one reply; do not produce \
+a guessed award.
 - Politely refuse questions unrelated to Saudi labor law.
 - You are not a lawyer and this is not legal advice; the Arabic text governs (Article 9).
 """
@@ -94,8 +99,11 @@ def calc_end_of_service(
 
     Wage is the last monthly wage in SAR. Dates are Gregorian ISO dates (YYYY-MM-DD).
     Service uses Hijri by default (Article 10); choose Gregorian only when the contract
-    or work regulations specify it. Ask for missing wage, dates or termination reason
-    before calling. Do not assume an Article 80/81/87 legal exception applies.
+    or work regulations specify it. Require wage, start date, end date and termination
+    reason together in the current message. If any are missing or invalid, ask for all
+    four together in one reply, including values already shared; earlier messages are
+    not retained yet. Include Gregorian service-calendar confirmation when specified
+    by the contract or work regulations. Do not assume an Article 80/81/87 exception applies.
     Returns amount, full-award wage bands, entitlement fraction and applied articles.
     """
     request = EndOfServiceRequest(
