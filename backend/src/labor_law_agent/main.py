@@ -3,12 +3,14 @@
 Env (set by Terraform): ``CHAT_MODEL_ID`` (fallback), ``CHAT_MODEL_PARAMETER_NAME``,
 ``CHAT_MODEL_PROVIDER``, ``CHAT_MAX_OUTPUT_TOKENS``,
 ``PINECONE_INDEX_NAME``, ``PINECONE_API_KEY_SECRET_ID``, ``USAGE_TABLE_NAME``,
-``IP_DAILY_QUESTION_QUOTA``, ``GLOBAL_DAILY_TOKEN_BUDGET``. AWS access uses the Lambda role.
+``IP_DAILY_QUESTION_QUOTA``, ``GLOBAL_DAILY_TOKEN_BUDGET``, ``CHECKPOINT_TABLE_NAME``. AWS access uses the Lambda role.
 
 Docs: ``init_chat_model(model, model_provider="bedrock_converse", max_tokens=...)``
 (https://docs.langchain.com/oss/python/langchain/models); ``BedrockEmbeddings`` embeds queries
 with Cohere ``input_type="search_query"`` (langchain-aws 1.9); ``PineconeVectorStore(index=,
-embedding=)`` (langchain-pinecone 0.2); ``Pinecone(api_key).Index(name=)`` (pinecone 7.x).
+embedding=)`` (langchain-pinecone 0.2); ``Pinecone(api_key).Index(name=)`` (pinecone 7.x);
+``DynamoDBSaver(table_name=, ttl_seconds=)`` (langgraph-checkpoint-aws 1.2,
+https://github.com/langchain-ai/langchain-aws/tree/main/libs/langgraph-checkpoint-aws).
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from langchain.chat_models import init_chat_model
 from langchain_aws import BedrockEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from langgraph.graph.state import CompiledStateGraph
+from langgraph_checkpoint_aws import DynamoDBSaver
 from pinecone import Pinecone
 from pydantic import BaseModel
 
@@ -38,6 +41,7 @@ DEFAULT_CHAT_MODEL_PROVIDER = "bedrock_converse"
 DEFAULT_MAX_OUTPUT_TOKENS = 1024
 DEFAULT_IP_DAILY_QUESTION_QUOTA = 20  # keep in sync with infra ip_daily_question_quota
 DEFAULT_GLOBAL_DAILY_TOKEN_BUDGET = 2_000_000  # keep in sync with infra global_daily_token_budget
+THREAD_TTL_SECONDS = 7 * 24 * 60 * 60  # conversation threads expire after 7 days
 
 
 class AgentSettings(BaseModel):
@@ -51,6 +55,7 @@ class AgentSettings(BaseModel):
     usage_table_name: str
     ip_daily_question_quota: int = DEFAULT_IP_DAILY_QUESTION_QUOTA
     global_daily_token_budget: int = DEFAULT_GLOBAL_DAILY_TOKEN_BUDGET
+    checkpoint_table_name: str
 
     @classmethod
     def from_env(cls) -> AgentSettings:
@@ -69,6 +74,10 @@ def build_app(settings: AgentSettings) -> FastAPI:
         embedding=BedrockEmbeddings(model_id=COHERE_MULTILINGUAL_MODEL_ID),
     )
     retriever = PineconeLawRetriever(vector_store)
+    # One saver shared across model switches, so a thread survives a model change.
+    checkpointer = DynamoDBSaver(
+        table_name=settings.checkpoint_table_name, ttl_seconds=THREAD_TTL_SECONDS
+    )
 
     def build_agent_for(model_id: str) -> CompiledStateGraph[Any]:
         model = init_chat_model(
@@ -76,7 +85,7 @@ def build_app(settings: AgentSettings) -> FastAPI:
             model_provider=settings.chat_model_provider,
             max_tokens=settings.chat_max_output_tokens,
         )
-        return build_agent(model, retriever)
+        return build_agent(model, retriever, checkpointer)
 
     if settings.chat_model_parameter_name:
         selector = ChatModelSelector(

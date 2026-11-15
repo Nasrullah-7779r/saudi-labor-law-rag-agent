@@ -11,6 +11,7 @@ dependencies = [
     "langchain>=1",
     "langchain-aws>=1.9.3",
     "langchain-pinecone>=0.2.13",
+    "langgraph-checkpoint-aws>=1.2.7",
     "pinecone>=7.3,<8",
     "pydantic>=2.7",
     "uvicorn>=0.54.0",

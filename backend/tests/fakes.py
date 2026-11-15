@@ -11,6 +11,7 @@ from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCallChunk
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from pydantic import Field
 
 from labor_law_agent.chat import ChatTurn
 from labor_law_agent.ingest.parser import Article
@@ -76,6 +77,9 @@ class ScriptedChatModel(BaseChatModel):
 
     script: list[AIMessage | Exception]
     calls: int = 0
+    seen: list[list[BaseMessage]] = Field(
+        default_factory=list
+    )  # messages received on each model call
 
     @property
     def _llm_type(self) -> str:
@@ -84,7 +88,8 @@ class ScriptedChatModel(BaseChatModel):
     def bind_tools(self, tools: Any, **kwargs: Any) -> ScriptedChatModel:  # type: ignore[override]
         return self
 
-    def _next(self) -> AIMessage:
+    def _next(self, messages: list[BaseMessage] | None = None) -> AIMessage:
+        self.seen.append(list(messages or []))
         entry = self.script[self.calls]
         self.calls += 1
         if isinstance(entry, Exception):
@@ -98,7 +103,7 @@ class ScriptedChatModel(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
-        return ChatResult(generations=[ChatGeneration(message=self._next())])
+        return ChatResult(generations=[ChatGeneration(message=self._next(messages))])
 
     def _stream(
         self,
@@ -107,7 +112,7 @@ class ScriptedChatModel(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
-        message = self._next()
+        message = self._next(messages)
         text = message.content if isinstance(message.content, str) else ""
         for piece in re.findall(r"\S+\s*", text):
             yield ChatGenerationChunk(message=AIMessageChunk(content=piece))
