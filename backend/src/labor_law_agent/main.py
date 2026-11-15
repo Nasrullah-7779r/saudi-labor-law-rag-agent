@@ -1,7 +1,7 @@
 """Production app: wires the agent to Bedrock and Pinecone from environment settings.
 
 Env (set by Terraform): ``CHAT_MODEL_ID`` (fallback), ``CHAT_MODEL_PARAMETER_NAME``,
-``CHAT_MODEL_ALLOWLIST`` (comma-separated), ``CHAT_MODEL_PROVIDER``, ``CHAT_MAX_OUTPUT_TOKENS``,
+``CHAT_MODEL_PROVIDER``, ``CHAT_MAX_OUTPUT_TOKENS``,
 ``PINECONE_INDEX_NAME``, ``PINECONE_API_KEY_SECRET_ID``, ``USAGE_TABLE_NAME``,
 ``IP_DAILY_QUESTION_QUOTA``, ``GLOBAL_DAILY_TOKEN_BUDGET``. AWS access uses the Lambda role.
 
@@ -33,7 +33,7 @@ from labor_law_agent.ingest.embeddings import COHERE_MULTILINGUAL_MODEL_ID
 from labor_law_agent.retrieval import PineconeLawRetriever
 from labor_law_agent.usage_guard import DynamoUsageGuard, UsageLimits
 
-DEFAULT_CHAT_MODEL_ID = "zai.glm-4.7-flash"  # keep in sync with infra chat_model_allowlist[0]
+DEFAULT_CHAT_MODEL_ID = "zai.glm-4.7-flash"  # keep in sync with infra chat_model_id
 DEFAULT_CHAT_MODEL_PROVIDER = "bedrock_converse"
 DEFAULT_MAX_OUTPUT_TOKENS = 1024
 DEFAULT_IP_DAILY_QUESTION_QUOTA = 20  # keep in sync with infra ip_daily_question_quota
@@ -44,7 +44,6 @@ class AgentSettings(BaseModel):
     chat_model_id: str = DEFAULT_CHAT_MODEL_ID
     chat_model_provider: str = DEFAULT_CHAT_MODEL_PROVIDER
     chat_model_parameter_name: str = ""  # empty: no runtime switching
-    chat_model_allowlist: str = ""  # comma-separated model ids allowed by IAM
     chat_max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS
     pinecone_index_name: str
     pinecone_api_key_secret_id: str
@@ -83,7 +82,6 @@ def build_app(settings: AgentSettings) -> FastAPI:
         selector = ChatModelSelector(
             boto3.client("ssm"),
             settings.chat_model_parameter_name,
-            allowlist=[m.strip() for m in settings.chat_model_allowlist.split(",") if m.strip()],
             fallback_model_id=settings.chat_model_id,
         )
         responder = AgentChatResponder.from_provider(
