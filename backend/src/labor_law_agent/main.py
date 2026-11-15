@@ -29,7 +29,7 @@ from labor_law_agent.ingest.embeddings import COHERE_MULTILINGUAL_MODEL_ID
 from labor_law_agent.retrieval import PineconeLawRetriever
 from labor_law_agent.usage_guard import DynamoUsageGuard, UsageLimits
 
-DEFAULT_CHAT_MODEL_ID = "us.amazon.nova-lite-v1:0"  # keep in sync with infra chat_model_id
+DEFAULT_CHAT_MODEL_ID = "zai.glm-4.7-flash"  # keep in sync with infra chat_model_id
 DEFAULT_CHAT_MODEL_PROVIDER = "bedrock_converse"
 DEFAULT_MAX_OUTPUT_TOKENS = 1024
 DEFAULT_IP_DAILY_QUESTION_QUOTA = 20  # keep in sync with infra ip_daily_question_quota

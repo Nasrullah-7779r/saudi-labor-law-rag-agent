@@ -32,14 +32,11 @@ data "aws_iam_policy_document" "chat_lambda" {
   }
 
   # Converse/ConverseStream are authorised as InvokeModel/InvokeModelWithResponseStream.
-  # A cross-Region inference profile needs the profile ARN plus the foundation model in every
-  # destination Region it routes to (https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html).
   statement {
     actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
     resources = [
-      "arn:aws:bedrock:${var.aws_region}:${data.aws_caller_identity.current.account_id}:inference-profile/${var.chat_model_id}", # chat model inference profile
-      "arn:aws:bedrock:*::foundation-model/${local.chat_foundation_model_id}",                                                   # chat model in profile destination Regions
-      "arn:aws:bedrock:${var.aws_region}::foundation-model/cohere.embed-multilingual-v3",                                        # query embeddings
+      "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.chat_model_id}",         # chat model (on-demand)
+      "arn:aws:bedrock:${var.aws_region}::foundation-model/cohere.embed-multilingual-v3", # query embeddings
     ]
   }
 
