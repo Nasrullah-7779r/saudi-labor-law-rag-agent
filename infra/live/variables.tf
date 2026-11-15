@@ -23,11 +23,12 @@ variable "api_throttle_burst_limit" {
 }
 
 variable "chat_model_id" {
-  description = "Bedrock cross-Region inference profile id of the chat model."
+  description = "Bedrock on-demand (in-Region) model id of the chat model."
   type        = string
-  # Temporary: Nova Lite needs no Anthropic use-case approval. Switch back to
-  # us.anthropic.claude-haiku-5-5 once Bedrock grants Anthropic access to the account.
-  default = "us.amazon.nova-lite-v1:0"
+  # GLM 4.7 Flash: on-demand in us-east-1, Converse tool use, no access request.
+  # A cross-Region inference profile id (e.g. us.anthropic.*) also needs the profile ARN
+  # and destination-Region model ARNs in the chat Lambda's IAM policy.
+  default = "zai.glm-4.7-flash"
 }
 
 variable "chat_max_output_tokens" {
