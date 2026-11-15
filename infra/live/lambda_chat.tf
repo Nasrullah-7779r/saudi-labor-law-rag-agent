@@ -23,28 +23,13 @@ resource "aws_cloudwatch_log_group" "chat_lambda" {
   retention_in_days = 14
 }
 
-locals {
-  # Cross-Region inference profile ids carry a geo prefix; the rest are on-demand model ids.
-  chat_model_profile_prefixes = ["us", "eu", "apac", "global"]
-  chat_model_arns = flatten([
-    for id in var.chat_model_allowlist : (
-      contains(local.chat_model_profile_prefixes, split(".", id)[0])
-      ? [
-        "arn:aws:bedrock:${var.aws_region}:${data.aws_caller_identity.current.account_id}:inference-profile/${id}",
-        "arn:aws:bedrock:*::foundation-model/${join(".", slice(split(".", id), 1, length(split(".", id))))}",
-      ]
-      : ["arn:aws:bedrock:${var.aws_region}::foundation-model/${id}"]
-    )
-  ])
-}
-
 # Active chat model id, switched at runtime with `aws ssm put-parameter --overwrite`
-# (see README). Terraform only seeds it; the backend accepts only allowlisted ids.
+# (see README). Terraform only seeds it.
 resource "aws_ssm_parameter" "chat_model_id" {
   name        = "/${local.name}/chat-model-id"
-  description = "Active Bedrock chat model id; must be in chat_model_allowlist."
+  description = "Active Bedrock chat model id (on-demand model id or inference profile id)."
   type        = "String"
-  value       = var.chat_model_allowlist[0]
+  value       = var.chat_model_id
 
   lifecycle {
     ignore_changes = [value]
@@ -62,12 +47,12 @@ data "aws_iam_policy_document" "chat_lambda" {
   # Converse/ConverseStream are authorised as InvokeModel/InvokeModelWithResponseStream.
   statement {
     actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
-    resources = concat(
-      local.chat_model_arns, # allowlisted chat models (on-demand, or inference profile + destination models)
-      [
-        "arn:aws:bedrock:${var.aws_region}::foundation-model/cohere.embed-multilingual-v3", # query embeddings
-      ],
-    )
+    resources = [
+      # Any chat model, switched at runtime via the chat-model-id parameter. foundation-model/*
+      # in every Region also covers cross-Region profiles' destination models and the Cohere embeddings.
+      "arn:aws:bedrock:*::foundation-model/*",
+      "arn:aws:bedrock:${var.aws_region}:${data.aws_caller_identity.current.account_id}:inference-profile/*", # cross-Region inference profiles
+    ]
   }
 
   statement {
@@ -113,9 +98,8 @@ resource "aws_lambda_function" "chat" {
       AWS_LWA_PORT                 = "8080"
       AWS_LWA_READINESS_CHECK_PATH = "/health"
       FRONTEND_ORIGIN              = "https://${aws_cloudfront_distribution.frontend.domain_name}"
-      CHAT_MODEL_ID                = var.chat_model_allowlist[0]
+      CHAT_MODEL_ID                = var.chat_model_id
       CHAT_MODEL_PARAMETER_NAME    = aws_ssm_parameter.chat_model_id.name
-      CHAT_MODEL_ALLOWLIST         = join(",", var.chat_model_allowlist)
       CHAT_MODEL_PROVIDER          = "bedrock_converse"
       CHAT_MAX_OUTPUT_TOKENS       = tostring(var.chat_max_output_tokens)
       PINECONE_INDEX_NAME          = var.pinecone_index_name

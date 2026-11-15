@@ -38,7 +38,7 @@ def put(ssm: Any, value: str) -> None:
 
 
 def make_selector(ssm: Any, clock: FakeClock) -> ChatModelSelector:
-    return ChatModelSelector(ssm, PARAM, [MODEL_A, MODEL_B], MODEL_A, ttl_seconds=TTL, clock=clock)
+    return ChatModelSelector(ssm, PARAM, MODEL_A, ttl_seconds=TTL, clock=clock)
 
 
 def test_reads_parameter_first_then_switches_only_after_ttl(ssm: Any) -> None:
@@ -56,16 +56,20 @@ def test_reads_parameter_first_then_switches_only_after_ttl(ssm: Any) -> None:
     assert selector.current_model_id() == MODEL_A  # TTL elapsed
 
 
-def test_non_allowlisted_id_is_ignored_and_warned(
+def test_empty_parameter_value_is_ignored_and_warned(
     ssm: Any, caplog: pytest.LogCaptureFixture
 ) -> None:
-    put(ssm, "evil-model")
-    selector = make_selector(ssm, FakeClock())
+    clock = FakeClock()
+    put(ssm, MODEL_B)
+    selector = make_selector(ssm, clock)
+    assert selector.current_model_id() == MODEL_B  # switch first so "kept" means current, not fallback
 
+    put(ssm, "   ")  # whitespace-only counts as empty after strip()
+    clock.now += TTL
     with caplog.at_level(logging.WARNING, logger="labor_law_agent.chat_model_switch"):
-        assert selector.current_model_id() == MODEL_A
+        assert selector.current_model_id() == MODEL_B
 
-    assert any("not allowlisted" in r.getMessage() for r in caplog.records)
+    assert any("is empty" in r.getMessage() for r in caplog.records)
 
 
 def test_missing_parameter_falls_back_then_keeps_current(

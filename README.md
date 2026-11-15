@@ -59,13 +59,13 @@ Region is fixed to `us-east-1` in code (`variables.tf`, live backend block, work
 
 ### Switching the chat model (no deploy)
 
-The chat Lambda reads the active model id from SSM parameter `/saudi-labor-law-rag-agent/chat-model-id` (cached ~60 s per instance). Only ids in Terraform's `chat_model_allowlist` are accepted (IAM grants exactly those); anything else, or an SSM error, keeps the current model and logs a warning.
+The chat Lambda reads the active model id from SSM parameter `/saudi-labor-law-rag-agent/chat-model-id` (cached ~60 s per instance). Any Bedrock model id or cross-Region inference profile id works (IAM allows all); an SSM error or empty value keeps the current model and logs a warning. The model must support Converse tool use and be enabled in the Bedrock console; otherwise chat fails until you switch back.
 
 ```bash
 aws ssm put-parameter --profile my-aws --region us-east-1 --overwrite --name /saudi-labor-law-rag-agent/chat-model-id --value zai.glm-4.7
 ```
 
-Terraform seeds the parameter with the first allowlist entry and ignores later value changes. To add a model, append it to `chat_model_allowlist` and merge (IAM must change); cross-Region profiles (`us.`/`global.` prefix) get the profile ARN and destination model ARNs automatically.
+Terraform seeds the parameter from `chat_model_id` and ignores later value changes. Spend is capped by the usage guard's daily token budget.
 
 ## Law ingest
 
