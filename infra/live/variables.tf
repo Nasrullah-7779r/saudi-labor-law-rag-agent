@@ -22,13 +22,21 @@ variable "api_throttle_burst_limit" {
   default     = 5
 }
 
-variable "chat_model_id" {
-  description = "Bedrock on-demand (in-Region) model id of the chat model."
-  type        = string
-  # GLM 4.7 Flash: on-demand in us-east-1, Converse tool use, no access request.
-  # A cross-Region inference profile id (e.g. us.anthropic.*) also needs the profile ARN
-  # and destination-Region model ARNs in the chat Lambda's IAM policy.
-  default = "zai.glm-4.7-flash"
+variable "chat_model_allowlist" {
+  description = "Bedrock chat model ids the chat Lambda may switch to at runtime (via the chat-model-id SSM parameter). IAM is granted for exactly these; the first entry seeds the parameter and is the env fallback."
+  type        = list(string)
+  # Plain ids are on-demand in-Region models. Ids with a geo prefix (us./eu./apac./global.)
+  # are cross-Region inference profiles and get the profile ARN plus the destination model ARNs:
+  #   "us.anthropic.claude-haiku-5-5",
+  default = [
+    "zai.glm-4.7-flash", # on-demand in us-east-1, Converse tool use, no access request
+    "zai.glm-4.7",
+  ]
+
+  validation {
+    condition     = length(var.chat_model_allowlist) > 0
+    error_message = "chat_model_allowlist needs at least one model id."
+  }
 }
 
 variable "chat_max_output_tokens" {
