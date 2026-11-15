@@ -75,6 +75,20 @@ data "aws_iam_policy_document" "chat_lambda" {
       aws_dynamodb_table.usage.arn, # usage-guard counters
     ]
   }
+
+  # Actions DynamoDBSaver needs (langgraph-checkpoint-aws README, IAM permissions).
+  statement {
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:Query",
+      "dynamodb:BatchGetItem",
+      "dynamodb:BatchWriteItem",
+    ]
+    resources = [
+      aws_dynamodb_table.checkpoints.arn, # conversation checkpoints
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "chat_lambda" {
@@ -107,6 +121,7 @@ resource "aws_lambda_function" "chat" {
       USAGE_TABLE_NAME             = aws_dynamodb_table.usage.name
       IP_DAILY_QUESTION_QUOTA      = tostring(var.ip_daily_question_quota)
       GLOBAL_DAILY_TOKEN_BUDGET    = tostring(var.global_daily_token_budget)
+      CHECKPOINT_TABLE_NAME        = aws_dynamodb_table.checkpoints.name
     }
   }
 

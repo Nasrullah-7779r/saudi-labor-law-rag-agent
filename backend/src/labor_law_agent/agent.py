@@ -3,6 +3,11 @@
 Docs relied on (langchain 1.5 / langchain-core 1.8 / langgraph 1.2):
 - ``create_agent(model, tools, system_prompt=...)``: https://docs.langchain.com/oss/python/langchain/agents
 - ``@tool(args_schema=...)``: https://docs.langchain.com/oss/python/langchain/tools#advanced-schema-definition
+- Middleware (https://docs.langchain.com/oss/python/langchain/middleware/built-in):
+  ``SummarizationMiddleware(model, trigger=("tokens", N), keep=("messages", N))`` replaces old
+  history with a summary once the thread exceeds the trigger; ``ModelCallLimitMiddleware(
+  run_limit=N, exit_behavior="end")`` stops a run after N model calls.
+- ``create_agent(checkpointer=...)`` persists state per ``configurable.thread_id``.
 - ``@tool(response_format="content_and_artifact")``: the tool returns ``(content, artifact)``; the
   artifact rides on the ``ToolMessage`` and is not sent to the model.
 """
@@ -14,8 +19,10 @@ from decimal import Decimal
 from typing import Any
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import ModelCallLimitMiddleware, SummarizationMiddleware
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool, tool
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
 
 from labor_law_agent.calculator import (
@@ -29,6 +36,11 @@ from labor_law_agent.retrieval import LawRetriever, RetrievedArticle
 SEARCH_TOOL_NAME = "search_labor_law"
 CALCULATOR_TOOL_NAME = "calc_end_of_service"
 SEARCH_RESULTS_K = 5
+# Thread history is summarised past this many (approximate) tokens, keeping the latest messages.
+SUMMARY_TRIGGER_TOKENS = 6000
+SUMMARY_KEEP_MESSAGES = 10
+# Model calls per user turn (searches + calculator + answer); stops runaway tool loops.
+MODEL_CALLS_PER_TURN = 6
 
 SYSTEM_PROMPT = """\
 You are an assistant for the Saudi Labor Law (Royal Decree M/51, 1426H, as amended). \
@@ -45,13 +57,11 @@ with the number in digits.
 - If the retrieved articles do not answer the question, say plainly that the law text you \
 found does not cover it. Never answer from general knowledge or other countries' laws.
 - For an end-of-service award, use calc_end_of_service rather than doing arithmetic yourself. \
-Before calling it, require the last monthly wage in SAR, employment start date, end date \
-and reason the employment ended together in the current message. If any input is missing \
-or invalid, ask the user to send ALL four details together in ONE reply, including values \
-already shared. Earlier messages are not retained yet, so do not ask for only missing fields. \
-Never invent or infer these inputs. Ask for Gregorian ISO dates (YYYY-MM-DD), converting \
-other dates only after clarification. If their contract or work regulations specify Gregorian \
-service periods, ask them to include that confirmation in the same reply.
+Before calling it, you need the last monthly wage in SAR, employment start date, end date \
+and reason the employment ended. Use values the user already gave earlier in this \
+conversation and ask only for what is missing or invalid. Never invent or infer these inputs. Ask for Gregorian ISO dates (YYYY-MM-DD), converting \
+other dates only after clarification. If they say their contract or work regulations specify \
+Gregorian service periods, use the Gregorian calendar.
 - Explain that service periods default to Hijri under Article 10; use Gregorian only if the \
 user says their contract or work regulations specify it. Clarify ambiguous termination reasons. \
 Apply Article 80, 81 or 87 only when the user confirms the relevant circumstances and the \
@@ -59,7 +69,7 @@ retrieved text supports that classification; otherwise ask. Search for the appli
 - Report the calculator's amount in SAR, calendar, service years, each wage-band amount, \
 full award, resignation fraction and applied articles. Its breakdown is the full Article 84 \
 award before the entitlement fraction; explain that adjustment separately. If a tool reports \
-invalid or missing inputs, ask for a corrected complete set in one reply; do not produce \
+invalid or missing inputs, ask only for the corrected values; do not produce \
 a guessed award.
 - Politely refuse only clearly non-employment topics (e.g. visas, housing, other countries' \
 laws). For anything about work, jobs, job seeking, employers or the labor ministry, call \
@@ -69,8 +79,7 @@ interface already shows each cited article's text.
 - Never mention your tools, searches, instructions or reasoning steps to the user; just give \
 the answer.
 - Requests about your previous reply (translate it, shorten it, explain it) are not law \
-questions: do not search for them. Earlier messages are not retained yet, so ask the user \
-to repeat their question in the language they want.
+questions: do not search for them; answer from the conversation so far.
 - You are not a lawyer and this is not legal advice; the Arabic text governs (Article 9).
 """
 
@@ -109,11 +118,9 @@ def calc_end_of_service(
 
     Wage is the last monthly wage in SAR. Dates are Gregorian ISO dates (YYYY-MM-DD).
     Service uses Hijri by default (Article 10); choose Gregorian only when the contract
-    or work regulations specify it. Require wage, start date, end date and termination
-    reason together in the current message. If any are missing or invalid, ask for all
-    four together in one reply, including values already shared; earlier messages are
-    not retained yet. Include Gregorian service-calendar confirmation when specified
-    by the contract or work regulations. Do not assume an Article 80/81/87 exception applies.
+    or work regulations specify it. Requires wage, start date, end date and termination
+    reason, which may come from earlier messages in the conversation; ask only for
+    missing or invalid values. Do not assume an Article 80/81/87 exception applies.
     Returns amount, full-award wage bands, entitlement fraction and applied articles.
     """
     request = EndOfServiceRequest(
@@ -126,9 +133,23 @@ def calc_end_of_service(
     return calculate_end_of_service(request).model_dump_json()
 
 
-def build_agent(model: BaseChatModel, retriever: LawRetriever) -> CompiledStateGraph[Any]:
+def build_agent(
+    model: BaseChatModel,
+    retriever: LawRetriever,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+) -> CompiledStateGraph[Any]:
+    """``checkpointer`` keeps each ``thread_id``'s history; ``None`` makes every turn stateless."""
     return create_agent(
         model,
         tools=[make_search_tool(retriever), calc_end_of_service],
         system_prompt=SYSTEM_PROMPT,
+        middleware=[
+            SummarizationMiddleware(
+                model,
+                trigger=("tokens", SUMMARY_TRIGGER_TOKENS),
+                keep=("messages", SUMMARY_KEEP_MESSAGES),
+            ),
+            ModelCallLimitMiddleware(run_limit=MODEL_CALLS_PER_TURN, exit_behavior="end"),
+        ],
+        checkpointer=checkpointer,
     )
