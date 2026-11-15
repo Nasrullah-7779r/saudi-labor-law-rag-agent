@@ -10,7 +10,7 @@ completed ``AIMessage`` (with ``tool_calls`` and ``usage_metadata``) from the ``
 from __future__ import annotations
 
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any, cast, get_args
 
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
@@ -56,7 +56,16 @@ class AgentChatResponder:
     """Streams one agent run as text, tool-status, citation and usage parts."""
 
     def __init__(self, agent: CompiledStateGraph[Any]) -> None:
-        self._agent = agent
+        self._agent_provider: Callable[[], CompiledStateGraph[Any]] = lambda: agent
+
+    @classmethod
+    def from_provider(
+        cls, agent_provider: Callable[[], CompiledStateGraph[Any]]
+    ) -> AgentChatResponder:
+        """Resolves the agent per turn, e.g. from a ``SwitchingAgentProvider``."""
+        responder = cls.__new__(cls)
+        responder._agent_provider = agent_provider
+        return responder
 
     async def respond(self, turn: ChatTurn) -> AsyncIterator[StreamPart]:
         text_id: str | None = None
@@ -80,7 +89,8 @@ class AgentChatResponder:
             parts.append(TextDeltaPart(id=text_id, delta=visible))
             return parts
 
-        async for chunk in self._agent.astream(
+        agent = self._agent_provider()
+        async for chunk in agent.astream(
             {"messages": [{"role": "user", "content": turn.message}]},
             config={"configurable": {"thread_id": turn.thread_id}},
             stream_mode=["messages", "updates"],

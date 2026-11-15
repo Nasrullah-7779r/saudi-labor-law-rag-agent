@@ -57,6 +57,16 @@ Region is fixed to `us-east-1` in code (`variables.tf`, live backend block, work
 | `AWS_INGEST_ROLE_ARN` | `github_ingest_role_arn` output |
 | `PINECONE_INDEX_NAME` | e.g. `saudi-labor-law` (created on first ingest) |
 
+### Switching the chat model (no deploy)
+
+The chat Lambda reads the active model id from SSM parameter `/saudi-labor-law-rag-agent/chat-model-id` (cached ~60 s per instance). Only ids in Terraform's `chat_model_allowlist` are accepted (IAM grants exactly those); anything else, or an SSM error, keeps the current model and logs a warning.
+
+```bash
+aws ssm put-parameter --profile my-aws --region us-east-1 --overwrite --name /saudi-labor-law-rag-agent/chat-model-id --value zai.glm-4.7
+```
+
+Terraform seeds the parameter with the first allowlist entry and ignores later value changes. To add a model, append it to `chat_model_allowlist` and merge (IAM must change); cross-Region profiles (`us.`/`global.` prefix) get the profile ARN and destination model ARNs automatically.
+
 ## Law ingest
 
 Source: the Arabic consolidated Labor Law on the Bureau of Experts (BOE) site,
