@@ -19,7 +19,11 @@ from decimal import Decimal
 from typing import Any
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import ModelCallLimitMiddleware, SummarizationMiddleware
+from langchain.agents.middleware import (
+    AgentMiddleware,
+    ModelCallLimitMiddleware,
+    SummarizationMiddleware,
+)
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool, tool
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -139,17 +143,20 @@ def build_agent(
     checkpointer: BaseCheckpointSaver[Any] | None = None,
 ) -> CompiledStateGraph[Any]:
     """``checkpointer`` keeps each ``thread_id``'s history; ``None`` makes every turn stateless."""
+    # Explicit element type: the middlewares declare different state schemas
+    # (AgentState vs ModelCallLimitState), so mypy can't infer a common list type.
+    middleware: list[AgentMiddleware[Any, Any, Any]] = [
+        SummarizationMiddleware(
+            model,
+            trigger=("tokens", SUMMARY_TRIGGER_TOKENS),
+            keep=("messages", SUMMARY_KEEP_MESSAGES),
+        ),
+        ModelCallLimitMiddleware(run_limit=MODEL_CALLS_PER_TURN, exit_behavior="end"),
+    ]
     return create_agent(
         model,
         tools=[make_search_tool(retriever), calc_end_of_service],
         system_prompt=SYSTEM_PROMPT,
-        middleware=[
-            SummarizationMiddleware(
-                model,
-                trigger=("tokens", SUMMARY_TRIGGER_TOKENS),
-                keep=("messages", SUMMARY_KEEP_MESSAGES),
-            ),
-            ModelCallLimitMiddleware(run_limit=MODEL_CALLS_PER_TURN, exit_behavior="end"),
-        ],
+        middleware=middleware,
         checkpointer=checkpointer,
     )
