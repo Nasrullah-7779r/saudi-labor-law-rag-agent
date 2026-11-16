@@ -48,6 +48,11 @@ def _cited_article_numbers(answer: str) -> set[int]:
     return {int(m.translate(_ARABIC_INDIC)) for m in _CITED_ARTICLE_RE.findall(answer)}
 
 
+def _rank(articles: list[RetrievedArticle]) -> list[RetrievedArticle]:
+    """Best match first; ties by article number. Shared by the reading status and citations."""
+    return sorted(articles, key=lambda a: (-a.score, a.article_no))
+
+
 def _excerpt(text: str) -> str:
     return text if len(text) <= EXCERPT_CHARS else text[:EXCERPT_CHARS].rstrip() + "…"
 
@@ -74,6 +79,7 @@ class AgentChatResponder:
         input_tokens = output_tokens = 0
         answer: list[str] = []
         thinking = ThinkingFilter()  # one per model turn
+        turn_answer_start = 0  # index in ``answer`` where the current model turn's text begins
 
         def open_or_continue_text(visible: str) -> list[StreamPart]:
             """Parts for visible text; a text part is opened only once there is text."""
@@ -116,6 +122,11 @@ class AgentChatResponder:
                         if text_id is not None:
                             yield TextEndPart(id=text_id)
                             text_id = None
+                        if message.tool_calls:
+                            # Text written before a tool call is narration, not answer; keep it
+                            # out of citation matching. The UI hides it too.
+                            del answer[turn_answer_start:]
+                        turn_answer_start = len(answer)
                         if message.usage_metadata:
                             input_tokens += message.usage_metadata["input_tokens"]
                             output_tokens += message.usage_metadata["output_tokens"]
@@ -127,15 +138,22 @@ class AgentChatResponder:
                                     )
                                 )
                     elif node == TOOLS_NODE and isinstance(message, ToolMessage):
-                        if message.name in _KNOWN_TOOLS:
-                            yield ToolStatusPart(
-                                data=ToolStatus(tool=cast(ToolName, message.name), state="done")
-                            )
+                        hits: list[RetrievedArticle] = []
                         if message.name == SEARCH_TOOL_NAME and message.artifact:
-                            for hit in cast(list[RetrievedArticle], message.artifact):
+                            hits = cast(list[RetrievedArticle], message.artifact)
+                            for hit in hits:
                                 best = cited.get(hit.article_no)
                                 if best is None or hit.score > best.score:
                                     cited[hit.article_no] = hit
+                        if message.name in _KNOWN_TOOLS:
+                            article_nos = list(dict.fromkeys(a.article_no for a in _rank(hits)))
+                            yield ToolStatusPart(
+                                data=ToolStatus(
+                                    tool=cast(ToolName, message.name),
+                                    state="done",
+                                    article_nos=article_nos or None,
+                                )
+                            )
 
         for part in open_or_continue_text(thinking.flush()):
             yield part
@@ -145,7 +163,7 @@ class AgentChatResponder:
         named = _cited_article_numbers("".join(answer))
         cited = {no: a for no, a in cited.items() if no in named}
         if cited:
-            ranked = sorted(cited.values(), key=lambda a: (-a.score, a.article_no))
+            ranked = _rank(list(cited.values()))
             yield CitationsPart(
                 data=Citations(
                     citations=[

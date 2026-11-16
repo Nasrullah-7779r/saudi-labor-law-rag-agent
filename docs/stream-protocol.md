@@ -26,8 +26,8 @@ Each event is `data: <json>\n\n`. The stream ends with `data: [DONE]`.
 | `type` | Payload | When |
 | --- | --- | --- |
 | `start` | `messageId` | first |
-| `data-tool-status` | `data: {tool: "search_labor_law" \| "calc_end_of_service", state: "running" \| "done"}` | around each tool call |
-| `text-start` / `text-delta` / `text-end` | `id`, `delta` (delta only) | answer text; concatenate the deltas that share an `id`. One text part per model turn, so text written before a tool call gets its own `id` |
+| `data-tool-status` | `data: {tool: "search_labor_law" \| "calc_end_of_service", state: "running" \| "done", article_nos: int[] \| null}` | around each tool call. `article_nos`: on a finished search, the retrieved article numbers, best match first; otherwise `null` |
+| `text-start` / `text-delta` / `text-end` | `id`, `delta` (delta only) | answer text; concatenate the deltas that share an `id`. One text part per model turn, so text written before a tool call gets its own `id`. That pre-tool text is narration: it is not matched for citations, and the UI hides it |
 | `data-citations` | `data: {citations: [{article_no: int, excerpt: str}]}` | after the text; retrieved articles the answer names ("Article N" / "المادة N"), best match first. Omitted when none |
 | `data-usage` | `data: {input_tokens, output_tokens, remaining_questions}` | before `finish`; tokens summed over the turn's model calls. `remaining_questions`: questions left today for the caller's IP (`0` when quotas are off) |
 | `error` | `errorText` | a failure after streaming began (the status is already 200) |

@@ -14,6 +14,8 @@ export const copy = {
     searching: "Looking up the law",
     calculating: "Calculating your award",
     thinking: "Preparing your answer",
+    reading: (articleNos: number[]) =>
+      `Reading ${articleNos.map((no) => `Article ${no}`).join(", ")}`,
     sources: "Articles behind this answer",
     article: "Article",
     quota: "questions left today",
@@ -56,6 +58,8 @@ export const copy = {
     searching: "جارٍ البحث في النظام",
     calculating: "جارٍ حساب المكافأة",
     thinking: "جارٍ إعداد الجواب",
+    reading: (articleNos: number[]) =>
+      `جارٍ قراءة ${articleNos.map((no) => `المادة ${no}`).join("، ")}`,
     sources: "المواد التي يستند إليها الجواب",
     article: "المادة",
     quota: "أسئلة متبقية اليوم",

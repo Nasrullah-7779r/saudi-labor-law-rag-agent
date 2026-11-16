@@ -45,6 +45,9 @@ ToolName = Literal["search_labor_law", "calc_end_of_service"]
 class ToolStatus(BaseModel):
     tool: ToolName
     state: Literal["running", "done"]
+    # Set on a finished search: the retrieved article numbers, best match first, so the UI can
+    # say which articles it is reading. Display text stays in the frontend for i18n.
+    article_nos: list[int] | None = None
 
 
 class ToolStatusPart(BaseModel):
