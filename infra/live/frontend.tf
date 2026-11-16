@@ -53,6 +53,7 @@ resource "aws_cloudfront_response_headers_policy" "frontend" {
 
 resource "aws_cloudfront_distribution" "frontend" {
   enabled             = true
+  aliases             = [var.frontend_domain]
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
   is_ipv6_enabled     = true
@@ -88,7 +89,9 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = aws_acm_certificate_validation.frontend.certificate_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 }
 
