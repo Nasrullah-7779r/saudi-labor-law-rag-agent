@@ -291,9 +291,52 @@ h1 {
   margin-bottom: 9px;
 }
 .answer-text {
-  white-space: pre-wrap;
   font-size: 16px;
   line-height: 1.95;
+}
+.answer-text > :first-child {
+  margin-top: 0;
+}
+.answer-text > :last-child {
+  margin-bottom: 0;
+}
+.answer-text :is(p, ul, ol, h1, h2, h3, h4, table) {
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+.answer-text p {
+  margin: 0 0 0.75em;
+}
+.answer-text :is(h1, h2, h3, h4) {
+  margin: 1.1em 0 0.4em;
+  line-height: 1.4;
+}
+.answer-text h1 {
+  font-size: 1.3em;
+}
+.answer-text h2 {
+  font-size: 1.18em;
+}
+.answer-text :is(h3, h4) {
+  font-size: 1.05em;
+}
+.answer-text :is(ul, ol) {
+  margin: 0 0 0.75em;
+  padding-inline-start: 1.4em;
+}
+.answer-text li + li {
+  margin-top: 0.25em;
+}
+.answer-text strong {
+  font-weight: 700;
+}
+.answer-text table {
+  border-collapse: collapse;
+  margin: 0 0 0.75em;
+}
+.answer-text :is(th, td) {
+  border: 1px solid #d5dfdc;
+  padding: 4px 10px;
 }
 .user {
   background: #e4eeeb;
