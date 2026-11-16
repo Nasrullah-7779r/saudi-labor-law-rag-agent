@@ -21,12 +21,31 @@ const markdownComponents: Components = {
 const SOURCE_URL =
   "https://laws.boe.gov.sa/BoeLaws/Laws/LawDetails/08381293-6388-48e2-8ad2-a9a700f2aa94/1";
 
+const MAX_STATUS_ARTICLES = 3;
+
+// Text the model writes before a tool call ("I need to check…") is narration, not answer.
+// Hide a text part once a tool status follows it; while streaming, also hide text that no
+// tool status precedes yet, since it may still turn out to be narration. A reply that never
+// calls a tool then appears when the stream ends.
+function isNarration(
+  parts: LawMessage["parts"],
+  index: number,
+  streaming: boolean,
+): boolean {
+  const isStatus = (part: LawMessage["parts"][number]) =>
+    part.type === "data-tool-status";
+  if (parts.slice(index + 1).some(isStatus)) return true;
+  return streaming && !parts.slice(0, index).some(isStatus);
+}
+
 function Answer({
   message,
   language,
+  streaming,
 }: {
   message: LawMessage;
   language: Language;
+  streaming: boolean;
 }) {
   const t = copy[language];
   return (
@@ -35,7 +54,8 @@ function Answer({
         {message.role === "user" ? t.you : t.assistant}
       </div>
       {message.parts.map((part, index) => {
-        if (part.type === "text")
+        if (part.type === "text") {
+          if (isNarration(message.parts, index, streaming)) return null;
           return (
             <div className="answer-text" dir="auto" key={index}>
               <Markdown
@@ -47,6 +67,7 @@ function Answer({
               </Markdown>
             </div>
           );
+        }
         if (part.type === "data-citations")
           return (
             <div className="citations" key={index}>
@@ -115,12 +136,15 @@ function Conversation({
           .filter((part) => part.type === "data-tool-status")
           .at(-1)
       : undefined;
+  const readingArticles = tool?.data.article_nos?.slice(0, MAX_STATUS_ARTICLES);
   const progress =
     tool?.data.state === "running"
       ? tool.data.tool === "calc_end_of_service"
         ? t.calculating
         : t.searching
-      : t.thinking;
+      : readingArticles?.length
+        ? t.reading(readingArticles)
+        : t.thinking;
   const errorKey = error?.message;
   const errorText =
     errorKey &&
@@ -183,7 +207,12 @@ function Conversation({
             aria-relevant="additions text"
           >
             {messages.map((message) => (
-              <Answer key={message.id} message={message} language={language} />
+              <Answer
+                key={message.id}
+                message={message}
+                language={language}
+                streaming={busy && message.id === lastMessage?.id}
+              />
             ))}
           </div>
         )}

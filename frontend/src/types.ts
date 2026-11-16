@@ -5,6 +5,8 @@ export type Citation = { article_no: number; excerpt: string };
 export type ToolStatus = {
   tool: "search_labor_law" | "calc_end_of_service";
   state: "running" | "done";
+  // Finished search only: retrieved article numbers, best match first.
+  article_nos?: number[] | null;
 };
 export type Usage = {
   input_tokens: number;

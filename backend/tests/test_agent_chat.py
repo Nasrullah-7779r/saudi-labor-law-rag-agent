@@ -88,9 +88,11 @@ def test_agent_search_then_answer_full_event_order() -> None:
         "[DONE]",
     ]
     states = [e["data"] for e in _of_type(events, "data-tool-status")]
+    retrieved = [h.article_no for h in InMemoryLawRetriever(ARTICLES).search("الأجر الشهري")]
+    assert retrieved
     assert states == [
-        {"tool": SEARCH_TOOL_NAME, "state": "running"},
-        {"tool": SEARCH_TOOL_NAME, "state": "done"},
+        {"tool": SEARCH_TOOL_NAME, "state": "running", "article_nos": None},
+        {"tool": SEARCH_TOOL_NAME, "state": "done", "article_nos": retrieved},
     ]
 
 
@@ -206,6 +208,47 @@ def test_agent_text_before_and_after_tool_call_gets_distinct_closed_ids() -> Non
     # the first text block is closed before the tool status goes out
     assert types.index("text-end") < types.index("data-tool-status")
     assert _text(events) == "Let me check. " + ANSWER
+
+
+class _Scored:
+    """Retriever fake returning fixed hits, with a duplicate article and a score tie."""
+
+    def search(self, query: str, k: int = 4) -> list[RetrievedArticle]:
+        def hit(no: int, score: float) -> RetrievedArticle:
+            return RetrievedArticle(article_no=no, chapter=None, text_ar=f"نص {no}", score=score)
+
+        return [hit(7, 0.5), hit(4, 0.5), hit(111, 0.9), hit(7, 0.2), hit(109, 0.1)]
+
+
+def test_agent_done_status_lists_unique_articles_by_score_then_article_no() -> None:
+    events = _chat([_tool_turn("x"), _answer_turn("No article named.")], retriever=_Scored())
+    done = [e["data"] for e in _of_type(events, "data-tool-status") if e["data"]["state"] == "done"]
+    assert done == [{"tool": SEARCH_TOOL_NAME, "state": "done", "article_nos": [111, 4, 7, 109]}]
+
+
+def test_agent_done_status_article_nos_null_when_search_has_no_hits() -> None:
+    events = _chat([_tool_turn("zzzz غيرموجود"), _answer_turn("Nothing found.")])
+    statuses = [e["data"] for e in _of_type(events, "data-tool-status")]
+    assert [s["article_nos"] for s in statuses] == [None, None]
+
+
+def test_agent_preamble_article_mention_is_not_cited() -> None:
+    class _Pair:
+        def search(self, query: str, k: int = 4) -> list[RetrievedArticle]:
+            return [
+                RetrievedArticle(article_no=109, chapter=None, text_ar="نص ١٠٩", score=0.9),
+                RetrievedArticle(article_no=111, chapter=None, text_ar="نص ١١١", score=0.8),
+            ]
+
+    events = _chat(
+        [
+            _tool_turn("x", content="Let me check Article 111. "),
+            _answer_turn("Leave is governed by Article 109."),
+        ],
+        retriever=_Pair(),
+    )
+    items = _of_type(events, "data-citations")[0]["data"]["citations"]
+    assert [c["article_no"] for c in items] == [109]
 
 
 def test_agent_retriever_failure_is_reported_in_band_without_leaking_message() -> None:
@@ -341,8 +384,8 @@ def test_agent_calculator_returns_award_breakdown_and_articles_to_model() -> Non
     events = _events(response.text)
     assert _of_type(events, "error") == []
     assert [event["data"] for event in _of_type(events, "data-tool-status")] == [
-        {"tool": "calc_end_of_service", "state": "running"},
-        {"tool": "calc_end_of_service", "state": "done"},
+        {"tool": "calc_end_of_service", "state": "running", "article_nos": None},
+        {"tool": "calc_end_of_service", "state": "done", "article_nos": None},
     ]
     assert len(model.received_tool_results) == 1
     tool_result = model.received_tool_results[0]
