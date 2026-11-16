@@ -1,10 +1,22 @@
 import { useChat } from "@ai-sdk/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import Markdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { copy } from "./copy";
 import { createLawTransport } from "./transport";
 import type { Language, LawMessage } from "./types";
 import "./styles.css";
+
+// Model output is untrusted: raw HTML is skipped (no rehype-raw) and
+// react-markdown's defaultUrlTransform strips unsafe URL schemes.
+// Links open in a new tab without opener access.
+// Docs: https://github.com/remarkjs/react-markdown#options (v10.1.0)
+const markdownComponents: Components = {
+  a({ node: _node, ...props }) {
+    return <a {...props} target="_blank" rel="noopener noreferrer" />;
+  },
+};
 
 const SOURCE_URL =
   "https://laws.boe.gov.sa/BoeLaws/Laws/LawDetails/08381293-6388-48e2-8ad2-a9a700f2aa94/1";
@@ -26,7 +38,13 @@ function Answer({
         if (part.type === "text")
           return (
             <div className="answer-text" dir="auto" key={index}>
-              {part.text}
+              <Markdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+                skipHtml
+              >
+                {part.text}
+              </Markdown>
             </div>
           );
         if (part.type === "data-citations")
