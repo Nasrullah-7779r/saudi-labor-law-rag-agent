@@ -52,3 +52,9 @@ variable "global_daily_token_budget" {
   type        = number
   default     = 2000000
 }
+
+variable "frontend_domain" {
+  description = "Custom domain for the frontend (DNS at Hostinger, CNAME to CloudFront)."
+  type        = string
+  default     = "nizam.mnasrullah.dev"
+}

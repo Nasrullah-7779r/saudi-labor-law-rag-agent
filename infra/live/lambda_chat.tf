@@ -111,7 +111,7 @@ resource "aws_lambda_function" "chat" {
       AWS_LWA_INVOKE_MODE          = "response_stream"
       AWS_LWA_PORT                 = "8080"
       AWS_LWA_READINESS_CHECK_PATH = "/health"
-      FRONTEND_ORIGIN              = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+      FRONTEND_ORIGIN              = "https://${var.frontend_domain}"
       CHAT_MODEL_ID                = var.chat_model_id
       CHAT_MODEL_PARAMETER_NAME    = aws_ssm_parameter.chat_model_id.name
       CHAT_MODEL_PROVIDER          = "bedrock_converse"

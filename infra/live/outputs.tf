@@ -17,7 +17,7 @@ output "pinecone_api_key_secret_name" {
 
 output "frontend_url" {
   description = "Public chat page served through CloudFront."
-  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+  value       = "https://${var.frontend_domain}"
 }
 
 output "frontend_bucket_name" {
@@ -26,4 +26,18 @@ output "frontend_bucket_name" {
 
 output "frontend_distribution_id" {
   value = aws_cloudfront_distribution.frontend.id
+}
+
+output "frontend_cert_validation_records" {
+  description = "ACM validation records; add each as a CNAME at Hostinger."
+  value = [for o in aws_acm_certificate.frontend.domain_validation_options : {
+    name  = o.resource_record_name
+    type  = o.resource_record_type
+    value = o.resource_record_value
+  }]
+}
+
+output "frontend_cname_target" {
+  description = "CNAME target for frontend_domain at Hostinger."
+  value       = aws_cloudfront_distribution.frontend.domain_name
 }
