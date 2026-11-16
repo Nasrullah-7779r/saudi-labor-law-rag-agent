@@ -58,3 +58,14 @@ variable "frontend_domain" {
   type        = string
   default     = "nizam.mnasrullah.dev"
 }
+
+variable "monthly_cost_budget_usd" {
+  description = "Hard monthly account cost budget (USD). Email alerts at 50/80/100%; at 100% Bedrock is denied to the chat Lambda."
+  type        = number
+  default     = 5
+}
+
+variable "budget_alert_email" {
+  description = "Recipient of budget alerts. Set via TF_VAR_budget_alert_email (GitHub repo variable BUDGET_ALERT_EMAIL in CI)."
+  type        = string
+}

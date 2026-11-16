@@ -6,6 +6,7 @@ on:
 
 env:
   AWS_REGION: us-east-1 # must match infra/*/variables.tf and the live backend block
+  TF_VAR_budget_alert_email: ${{ vars.BUDGET_ALERT_EMAIL }}
 
 permissions:
   contents: read

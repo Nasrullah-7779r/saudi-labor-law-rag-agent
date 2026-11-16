@@ -56,6 +56,7 @@ Region is fixed to `us-east-1` in code (`variables.tf`, live backend block, work
 | `AWS_DEPLOY_ROLE_ARN` | `github_deploy_role_arn` output |
 | `AWS_INGEST_ROLE_ARN` | `github_ingest_role_arn` output |
 | `PINECONE_INDEX_NAME` | e.g. `saudi-labor-law` (created on first ingest) |
+| `BUDGET_ALERT_EMAIL` | address for AWS Budgets alerts (`budget_alert_email`) |
 
 ### Switching the chat model (no deploy)
 
@@ -65,7 +66,11 @@ The chat Lambda reads the active model id from SSM parameter `/saudi-labor-law-r
 aws ssm put-parameter --profile my-aws --region us-east-1 --overwrite --name /saudi-labor-law-rag-agent/chat-model-id --value zai.glm-4.7
 ```
 
-Terraform seeds the parameter from `chat_model_id` and ignores later value changes. Spend is capped by the usage guard's daily token budget.
+Terraform seeds the parameter from `chat_model_id` and ignores later value changes. Spend is capped by the usage guard's daily token budget, with a hard backstop behind it (see Cost backstop).
+
+### Cost backstop
+
+An account-wide AWS Budgets cost budget (`monthly_cost_budget_usd`, default $5/month) emails `BUDGET_ALERT_EMAIL` at 50/80/100% of actual spend. At 100% a Budgets action automatically attaches `saudi-labor-law-rag-agent-deny-bedrock` to the chat Lambda role, so every chat call fails until you detach it (Budgets console → the budget → Actions → reverse, or `aws iam detach-role-policy`). It does not revert on its own when the month rolls over. Budget data lags actual spend by hours, so this is a backstop, not a precise cap.
 
 ## Law ingest
 
