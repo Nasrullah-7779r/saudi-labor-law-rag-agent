@@ -68,4 +68,10 @@ variable "monthly_cost_budget_usd" {
 variable "budget_alert_email" {
   description = "Recipient of budget alerts. Set via TF_VAR_budget_alert_email (GitHub repo variable BUDGET_ALERT_EMAIL in CI)."
   type        = string
+
+  validation {
+    # CI passes "" when the BUDGET_ALERT_EMAIL repo variable is unset; fail at plan, not apply.
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.budget_alert_email))
+    error_message = "budget_alert_email must be an email address (set the BUDGET_ALERT_EMAIL repo variable)."
+  }
 }
