@@ -4,9 +4,12 @@ from pathlib import Path
 import pytest
 
 from labor_law_agent.ingest.parser import (
+    AMENDMENTS_HEADING,
+    REPEALED_PREFIX,
     ArticleParseError,
     article_number_from_heading,
     parse_articles,
+    resolve_amendments,
     to_western_digits,
 )
 
@@ -176,7 +179,6 @@ def test_fixture_articles_carry_part() -> None:
     assert {a.part for a in articles} == {"الباب الأول: أحكام عامة"}
 
 
-
 @pytest.mark.parametrize(
     ("heading", "expected"),
     [
@@ -245,11 +247,23 @@ def test_real_boe_excerpt_parses_articles_one_to_three() -> None:
     assert [a.article_no for a in parse_articles(REAL_EXCERPT, **KW)] == [1, 2, 3]
 
 
-def test_real_boe_article_two_has_current_text_only() -> None:
+def test_real_boe_article_two_keeps_original_and_lists_both_amendments() -> None:
+    # Article 2 has two paragraph/addition-type popup amendments on the real page (M/134,
+    # M/44); neither is a whole-article replacement, so the original stays and both are notes.
     art = parse_articles(REAL_EXCERPT, **KW)[1]
     assert "يقصد بالألفاظ" in art.text_ar
-    assert "تعديل تعريف العامل" not in art.text_ar  # hidden prior-version popup
+    assert AMENDMENTS_HEADING in art.text_ar
+    notes = art.text_ar.split(AMENDMENTS_HEADING)[1].strip().splitlines()
+    assert len(notes) == 2
+    assert "(م/134)" in notes[0]
+    assert "(م/44)" in notes[1]
     assert "تعديلات المادة" not in art.text_ar  # .article_btns button label
+
+
+def test_real_boe_article_three_is_replaced_by_amended_text() -> None:
+    art = parse_articles(REAL_EXCERPT, **KW)[2]
+    assert art.text_ar.startswith("العمل حق للمواطن")
+    assert AMENDMENTS_HEADING not in art.text_ar
 
 
 def test_real_boe_nested_containers_do_not_duplicate_lines() -> None:
@@ -302,3 +316,98 @@ def test_unheaded_text_after_excluded_article_is_dropped() -> None:
     articles = parse_articles(html, excluded=frozenset({2}), **KW)
     assert [a.article_no for a in articles] == [1]
     assert "بند بلا عنوان" not in articles[0].text_ar
+
+
+# --- resolve_amendments / popup amendments ---
+
+ORIG = "نص أصلي."
+
+
+def test_full_replacement_wins() -> None:
+    amend = 'عدلت هذه المادة بموجب المرسوم (م/46)، لتكون بالنص الآتي: "نص جديد."'
+    assert resolve_amendments(ORIG, [amend]) == "نص جديد."
+
+
+def test_later_full_replacement_supersedes_earlier() -> None:
+    first = 'عدلت هذه المادة بموجب المرسوم (م/46)، لتكون بالنص الآتي: "يدفع العامل 30 ويدفع صاحب العمل 15."'
+    second = 'عدلت هذه المادة بموجب المرسوم (م/44)، لتكون بالنص الآتي: "يدفع العامل 30 ويدفع صاحب العمل 60."'
+    result = resolve_amendments(ORIG, [first, second])
+    assert result == "يدفع العامل 30 ويدفع صاحب العمل 60."
+    assert "15" not in result
+
+
+def test_paragraph_amendment_is_appended_not_replacing() -> None:
+    note = 'عدلت الفقرة (1) من هذه المادة لتكون بالنص الآتي: "فقرة جديدة."'
+    result = resolve_amendments(ORIG, [note])
+    assert result == f"{ORIG}\n\n{AMENDMENTS_HEADING}\n- {note}"
+
+
+def test_word_replacement_amendment_is_a_note() -> None:
+    note = 'بإحلال كلمة "الوزير" محل كلمة "الوزارة" في هذه المادة.'
+    result = resolve_amendments(ORIG, [note])
+    assert result.startswith(ORIG)
+    assert f"- {note}" in result
+
+
+def test_full_replacement_after_note_clears_note() -> None:
+    note = 'عدلت الفقرة (1) من هذه المادة لتكون بالنص الآتي: "فقرة."'
+    full = 'عدلت هذه المادة لتكون بالنص الآتي: "نص كامل جديد."'
+    result = resolve_amendments(ORIG, [note, full])
+    assert result == "نص كامل جديد."
+    assert AMENDMENTS_HEADING not in result
+
+
+def test_note_after_full_replacement_is_kept_under_new_base() -> None:
+    full = 'عدلت هذه المادة لتكون بالنص الآتي: "نص كامل جديد."'
+    note = 'عدلت الفقرة (2) من هذه المادة لتكون بالنص الآتي: "فقرة."'
+    result = resolve_amendments(ORIG, [full, note])
+    assert result.startswith("نص كامل جديد.")
+    assert ORIG not in result
+    assert f"- {note}" in result
+
+
+def test_repeal_gives_repealed_text() -> None:
+    result = resolve_amendments(ORIG, ["أُلغيت هذه المادة بموجب المرسوم (م/44)."])
+    assert result.startswith(REPEALED_PREFIX)
+    assert ORIG not in result
+
+
+def test_replacement_by_cancelling_text_and_substituting_is_not_a_repeal() -> None:
+    amend = 'تم إلغاء نص هذه المادة بموجب المرسوم (م/44) وإحلال النص الآتي محله: "النص البديل."'
+    result = resolve_amendments(ORIG, [amend])
+    assert result == "النص البديل."
+    assert REPEALED_PREFIX not in result
+
+
+def test_single_paragraph_replacement_counts_as_full_replacement() -> None:
+    amend = 'عدلت هذه المادة لتكون فقرة واحدة بالنص الآتي: "نص فقرة واحدة."'
+    assert resolve_amendments(ORIG, [amend]) == "نص فقرة واحدة."
+
+
+def test_no_amendments_returns_original() -> None:
+    assert resolve_amendments(ORIG, []) == ORIG
+
+
+def _popup(*texts: str) -> str:
+    items = "".join(
+        f'<div class="article_item_popup"><div class="HTMLContainer"><p>{t}</p></div></div>'
+        for t in texts
+    )
+    return f'<div class="popup-list">{items}</div>'
+
+
+def test_parse_articles_applies_latest_popup_amendment_without_duplication() -> None:
+    html = _page(
+        '<div class="article_item"><h3>المادة 1</h3>'
+        '<div class="HTMLContainer"><p>النص الأصلي القديم.</p></div>'
+        + _popup(
+            'عدلت هذه المادة لتكون بالنص الآتي: "النص الوسيط."',
+            'عدلت هذه المادة لتكون بالنص الآتي: "النص الأحدث النافذ."',
+        )
+        + "</div>"
+    )
+    [art] = parse_articles(html, **KW)
+    assert art.text_ar == "النص الأحدث النافذ."
+    assert "النص الأصلي القديم" not in art.text_ar
+    assert "النص الوسيط" not in art.text_ar
+    assert art.text_ar.count("النص الأحدث النافذ") == 1

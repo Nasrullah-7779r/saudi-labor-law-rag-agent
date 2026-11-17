@@ -9,10 +9,12 @@ Assumptions about the page (re-check against a saved real BOE page):
   resets the current chapter;
 - amending-decree notes are lines starting with ``عدلت``/``عُدلت``/``أضيفت``/``ألغيت`` or
   blocks carrying the ``amendment`` CSS class, and are dropped;
-- on the real BOE page an article's current text sits in ``div.HTMLContainer`` (often inside a
-  ``<p>`` that itself wraps further ``<p>``s), and earlier versions sit in a hidden
-  ``.popup-list`` next to it; the popup and ``.article_btns`` are dropped, and only the
-  outermost content block is read so nested ``<p>``s are not read twice;
+- on the real BOE page an article's ORIGINAL (1426H) text sits in ``div.HTMLContainer`` (often
+  inside a ``<p>`` that itself wraps further ``<p>``s), and every amendment since sits, oldest
+  first, in a hidden ``.popup-list`` inside the same ``div.article_item``, one
+  ``div.article_item_popup`` each. Amendments are read before the popup is dropped and resolved
+  by :func:`resolve_amendments`; only the outermost content block is read so nested ``<p>``s
+  are not read twice;
 - anything before the first article (the issuing decree preamble) is dropped.
 """
 
@@ -22,7 +24,7 @@ import re
 from collections import Counter
 from datetime import date
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from pydantic import BaseModel
 
 from labor_law_agent.ingest.ordinals import arabic_ordinal_to_int
@@ -36,6 +38,18 @@ _CHAPTER_RE = re.compile(r"^\s*الفصل\b")
 _DROPPED_SELECTOR = ".amendment, .popup-list, .article_btns"
 _CONTENT_SELECTOR = "h1, h2, h3, h4, p, li, div.HTMLContainer"
 _AMEND_RE = re.compile(r"^\s*(عدلت|عُدلت|عُدِّلت|أضيفت|ألغيت)")
+# A whole-article replacement: "...عدلت هذه المادة ... لتكون بالنص الآتي: "..."" or
+# "تم إلغاء نص هذه المادة ... وإحلال النص الآتي محله: "..."". Paragraph, word and addition
+# amendments ("عدلت الفقرة (1) من هذه المادة", "بإحلال كلمة") do not match.
+_FULL_REPLACEMENT_RE = re.compile(
+    r"(عدلت|عُدلت|عُدِّلت|تعديل) هذه المادة[^\"“«]{0,80}?(لتكون|بالنص الآتي)"
+    r"|إلغاء نص هذه المادة[^\"“«]{0,80}?محله"
+)
+_REPEAL_RE = re.compile(r"^[-\s]*(حُذفت|حذفت|أُلغيت|ألغيت|أُلغِيت) هذه المادة")
+_OPEN_QUOTES = "\"“«"
+_CLOSE_QUOTES = "\"”»"
+AMENDMENTS_HEADING = "التعديلات اللاحقة على هذه المادة (بالترتيب الزمني، والأحدث هو النافذ):"
+REPEALED_PREFIX = "ألغيت هذه المادة."
 
 
 class ArticleParseError(ValueError):
@@ -70,6 +84,61 @@ def to_western_digits(text: str) -> str:
         'المادة 12'
     """
     return text.translate(_DIGITS)
+
+
+def _quoted_text(amendment: str) -> str | None:
+    """Text between the first opening and the last closing quote, if any."""
+    start = next((i for i, ch in enumerate(amendment) if ch in _OPEN_QUOTES), None)
+    end = next(
+        (i for i in range(len(amendment) - 1, -1, -1) if amendment[i] in _CLOSE_QUOTES), None
+    )
+    if start is None or end is None or end <= start:
+        return None
+    return amendment[start + 1 : end].strip() or None
+
+
+def resolve_amendments(original: str, amendments: list[str]) -> str:
+    """The article's text as currently in force, from its original text and amendments.
+
+    Applied oldest first: a whole-article replacement becomes the new base text and clears
+    earlier notes; a repeal replaces the text with a repeal notice; any other amendment
+    (paragraph, word or addition) cannot be merged reliably, so it is appended verbatim under
+    :data:`AMENDMENTS_HEADING`, where the latest one governs.
+
+    Example:
+        >>> resolve_amendments("نص قديم", ['وعدلت هذه المادة لتكون بالنص الآتي: "نص جديد"'])
+        'نص جديد'
+    """
+    base = original
+    notes: list[str] = []
+    for amendment in amendments:
+        if _REPEAL_RE.match(amendment) and _quoted_text(amendment) is None:
+            base, notes = f"{REPEALED_PREFIX}\n{amendment}", []
+            continue
+        prefix_end = next((i for i, ch in enumerate(amendment) if ch in _OPEN_QUOTES), None)
+        replacement = _quoted_text(amendment)
+        if (
+            prefix_end is not None
+            and replacement
+            and _FULL_REPLACEMENT_RE.search(amendment[: prefix_end + 1])
+        ):
+            base, notes = replacement, []
+        else:
+            notes.append(amendment)
+    if not notes:
+        return base
+    return "\n".join([base, "", AMENDMENTS_HEADING, *(f"- {n}" for n in notes)])
+
+
+def _popup_amendments(item: Tag) -> list[str]:
+    """Amendment texts from an article block's popup, oldest first, whitespace-normalised."""
+    texts = []
+    for popup in item.select("div.popup-list div.article_item_popup"):
+        body = popup.select_one("div.HTMLContainer")
+        text = " ".join(body.get_text(" ").split()).lstrip("- ") if body else ""
+        if text:
+            texts.append(text)
+    return texts
 
 
 def article_number_from_heading(text: str) -> int | None:
@@ -116,6 +185,12 @@ def parse_articles(
         ArticleParseError: No articles, a gap, a duplicate number, or an empty article.
     """
     soup = BeautifulSoup(html, "html.parser")
+    # Read amendments before their popups are dropped; keyed by the article block's identity.
+    amendments_by_item = {
+        id(item): found
+        for item in soup.select("div.article_item")
+        if (found := _popup_amendments(item))
+    }
     for node in soup.select(_DROPPED_SELECTOR):
         node.decompose()
 
@@ -125,6 +200,7 @@ def parse_articles(
     current_no: int | None = None
     current_part: str | None = None
     current_chapter: str | None = None
+    current_amendments: list[str] = []
     lines: list[str] = []
 
     def flush() -> None:
@@ -135,7 +211,7 @@ def parse_articles(
                     article_no=current_no,
                     part=current_part,
                     chapter=current_chapter,
-                    text_ar="\n".join(lines).strip(),
+                    text_ar=resolve_amendments("\n".join(lines).strip(), current_amendments),
                     source_url=source_url,
                     version=version,
                 )
@@ -151,6 +227,8 @@ def parse_articles(
                 current_no = number
                 current_part = part
                 current_chapter = chapter
+                block = el.find_parent("div", class_="article_item")
+                current_amendments = amendments_by_item.get(id(block), []) if block else []
                 lines = []
                 continue
             if _PART_RE.match(text):
