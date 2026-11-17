@@ -2,13 +2,12 @@ import { useChat } from "@ai-sdk/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Answer } from "./Answer";
+import { conversationToMarkdown, downloadMarkdown } from "./conversationExport";
 import { copy } from "./copy";
+import { SOURCE_URL } from "./law";
 import { createLawTransport } from "./transport";
 import type { Language, LawMessage } from "./types";
 import "./styles.css";
-
-const SOURCE_URL =
-  "https://laws.boe.gov.sa/BoeLaws/Laws/LawDetails/08381293-6388-48e2-8ad2-a9a700f2aa94/1";
 
 const MAX_STATUS_ARTICLES = 3;
 
@@ -91,6 +90,14 @@ function Conversation({
     void sendMessage({ text: question });
   }
 
+  function exportConversation() {
+    const now = new Date();
+    downloadMarkdown(
+      `saudi-labor-law-${now.toISOString().slice(0, 10)}.md`,
+      conversationToMarkdown(messages, language, now),
+    );
+  }
+
   function retry() {
     // Drop the failed turn before resending so the transcript has one copy.
     const userIndex = messages.findLastIndex(
@@ -159,6 +166,11 @@ function Conversation({
             <>
               <strong>{remaining}</strong> {t.quota}
             </>
+          )}
+          {messages.length > 0 && !busy && (
+            <button type="button" className="export" onClick={exportConversation}>
+              {t.export} <span aria-hidden="true">↓</span>
+            </button>
           )}
         </div>
         <form
