@@ -55,7 +55,12 @@ function Answer({
       </div>
       {message.parts.map((part, index) => {
         if (part.type === "text") {
-          if (isNarration(message.parts, index, streaming)) return null;
+          // Narration is an assistant concept; the user's question always shows.
+          if (
+            message.role === "assistant" &&
+            isNarration(message.parts, index, streaming)
+          )
+            return null;
           return (
             <div className="answer-text" dir="auto" key={index}>
               <Markdown
