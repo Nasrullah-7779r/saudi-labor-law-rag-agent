@@ -42,6 +42,8 @@ export const copy = {
       "We couldn’t complete your answer. Check your connection and try again.",
     retry: "Try again",
     characters: "characters",
+    export: "Download conversation",
+    exportedOn: "Exported",
   },
   ar: {
     title: "نظام العمل السعودي",
@@ -86,5 +88,7 @@ export const copy = {
     unavailable: "تعذّر إكمال الجواب. تحقّق من الاتصال ثم حاول مجدداً.",
     retry: "حاول مجدداً",
     characters: "حرف",
+    export: "تنزيل المحادثة",
+    exportedOn: "تاريخ التصدير",
   },
 };

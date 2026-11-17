@@ -1,6 +1,7 @@
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { copy } from "./copy";
+import { isNarration } from "./narration";
 import type { Language, LawMessage } from "./types";
 
 // Model output is untrusted: raw HTML is skipped (no rehype-raw) and
@@ -12,21 +13,6 @@ const markdownComponents: Components = {
     return <a {...props} target="_blank" rel="noopener noreferrer" />;
   },
 };
-
-// Text the model writes before a tool call ("I need to check…") is narration, not answer.
-// Hide a text part once a tool status follows it; while streaming, also hide text that no
-// tool status precedes yet, since it may still turn out to be narration. A reply that never
-// calls a tool then appears when the stream ends.
-function isNarration(
-  parts: LawMessage["parts"],
-  index: number,
-  streaming: boolean,
-): boolean {
-  const isStatus = (part: LawMessage["parts"][number]) =>
-    part.type === "data-tool-status";
-  if (parts.slice(index + 1).some(isStatus)) return true;
-  return streaming && !parts.slice(0, index).some(isStatus);
-}
 
 export function Answer({
   message,

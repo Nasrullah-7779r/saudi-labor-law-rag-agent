@@ -219,6 +219,18 @@ h1 {
   color: #134f46;
   font-size: 14px;
 }
+.quota .export {
+  float: inline-end;
+  border: 0;
+  background: none;
+  color: #134f46;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.quota .export:hover {
+  text-decoration: underline;
+}
 .composer {
   border: 1px solid #c3d8d0;
   background: #fff;
