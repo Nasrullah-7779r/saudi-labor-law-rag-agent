@@ -13,7 +13,7 @@ import re
 from collections.abc import AsyncIterator, Callable
 from typing import Any, cast, get_args
 
-from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.graph.state import CompiledStateGraph
 
 from labor_law_agent.agent import SEARCH_TOOL_NAME
@@ -104,8 +104,11 @@ class AgentChatResponder:
         ):
             if chunk["type"] == "messages":
                 token, metadata = chunk["data"]
+                # Streaming models yield AIMessageChunk deltas; models LangChain calls without
+                # streaming (e.g. MiniMax on Bedrock Converse) yield one whole AIMessage instead.
+                # AIMessageChunk subclasses AIMessage, so this accepts both.
                 if (
-                    isinstance(token, AIMessageChunk)
+                    isinstance(token, AIMessage)
                     and metadata.get("langgraph_node") == MODEL_NODE
                     and token.text
                 ):

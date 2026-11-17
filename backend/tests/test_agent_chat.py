@@ -58,8 +58,10 @@ def _answer_turn(text: str = ANSWER, tokens: tuple[int, int] = (20, 8)) -> AIMes
     )
 
 
-def _chat(script: list[AIMessage | Exception], retriever: Any = None) -> list[Any]:
-    model = ScriptedChatModel(script=script)
+def _chat(
+    script: list[AIMessage | Exception], retriever: Any = None, *, streaming: bool = True
+) -> list[Any]:
+    model = ScriptedChatModel(script=script, disable_streaming=not streaming)
     agent = build_agent(model, retriever or InMemoryLawRetriever(ARTICLES))
     client = TestClient(create_app(AgentChatResponder(agent)))
     response = client.post("/chat", json={"message": "متى يستحق العامل الأجر؟", "thread_id": "t"})
@@ -104,6 +106,18 @@ def test_agent_text_streams_in_chunks_sharing_one_id() -> None:
     ids = {e["id"] for e in deltas}
     assert ids == {_of_type(events, "text-start")[0]["id"], _of_type(events, "text-end")[0]["id"]}
     assert len(ids) == 1
+
+
+def test_agent_non_streaming_model_text_is_emitted_once() -> None:
+    # Models LangChain runs without streaming (MiniMax on Bedrock Converse) make LangGraph's
+    # messages stream yield one whole AIMessage rather than AIMessageChunk deltas.
+    events = _chat([_tool_turn("الأجر الشهري"), _answer_turn()], streaming=False)
+    deltas = _of_type(events, "text-delta")
+    assert [e["delta"] for e in deltas] == [ANSWER]
+    assert len(_of_type(events, "text-start")) == 1
+    assert len(_of_type(events, "text-end")) == 1
+    assert {e["id"] for e in deltas} == {_of_type(events, "text-start")[0]["id"]}
+    assert _text(events) == ANSWER
 
 
 def test_agent_citations_are_retrieved_articles_deduped() -> None:
